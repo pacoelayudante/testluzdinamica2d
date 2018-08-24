@@ -6,7 +6,7 @@ public class LuzDinamica2D : MonoBehaviour {
     static ContactFilter2D filtroVacio= new ContactFilter2D();
     static int cantHits = 0;
     static RaycastHit2D[] hits = new RaycastHit2D[1];
-    static Dictionary<Collider,List<Circulo>> colliders=new Dictionary<Collider, List<Circulo>> ();
+    static Dictionary<Collider2D, List<Circulo>> colliders = new Dictionary<Collider2D, List<Circulo>>();
 
     class Circulo
     {
@@ -33,6 +33,10 @@ public class LuzDinamica2D : MonoBehaviour {
 
         int cantHits = 0;
         public RaycastHit2D[] hits = new RaycastHit2D[2];
+        public Vector2 PuntoCercano
+        { get { return rayoInterrumpido ? puntoHit : punto; } }
+        public float DistanciaCercana
+        { get { return rayoInterrumpido ? hits[0].distance : distancia; } }
 
         public VectorDeLuz(Circulo referencia, Vector2 desde, float radio=0f)
         {
@@ -110,10 +114,20 @@ public class LuzDinamica2D : MonoBehaviour {
             }
             else
             {//No choco nada? inventale el vertice final
-                hits[0].point = origen + rayoDesdeOrigen.normalized*radio;
-                hits[0].distance = radio;
-                hits[0].normal = rayoDesdeOrigen.normalized;
-                cantHits = 1;
+                if (distancia > radio)
+                {//esta muy lejos, inventale un choque pero con limite luz
+                    rayoInterrumpido = true;
+                    distancia = radio;
+                    distancia2 = distancia * distancia;
+                    hits[0].point = origen + rayoDesdeOrigen.normalized * radio;
+                }
+                else
+                {
+                    hits[0].point = origen + rayoDesdeOrigen.normalized * radio;
+                }
+                    hits[0].distance = radio;
+                    hits[0].normal = rayoDesdeOrigen.normalized;
+                    cantHits = 1;
             }
             puntoHit = hits[0].point;
         }
@@ -137,42 +151,48 @@ public class LuzDinamica2D : MonoBehaviour {
     public float radio,grosorRayo=.001f;
     List<VectorDeLuz> destinosDeRayos = new List<VectorDeLuz>();
 
-    static void GenerarCirculos(List<Circulo> vertices)
+    static void GenerarCirculos()
     {
-        GenerarCirculosBox( vertices);
-        GenerarCirculosCircle( vertices);
-        GenerarCirculosCapsule( vertices);
-        GenerarCirculosEdge( vertices);
-        GenerarCirculosPolygon( vertices);
-        GenerarCirculosComposite( vertices);
+        colliders.Clear();
+        GenerarCirculosBox( );
+        GenerarCirculosCircle();
+        GenerarCirculosCapsule();
+        GenerarCirculosEdge();
+        GenerarCirculosPolygon();
+        GenerarCirculosComposite();
     }
-    static void GenerarCirculosBox(List<Circulo> vertices)
+    static void GenerarCirculosBox()
     {
         foreach (var coll in FindObjectsOfType<BoxCollider2D>())
         {
             if (!coll.enabled) continue;
             if (coll.usedByComposite) continue;
+            List<Circulo> vertices = new List<Circulo>();
             vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(coll.offset.x + coll.size.x / 2f, coll.offset.y + coll.size.y / 2f, 0f), radio = coll.edgeRadius });
             vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(coll.offset.x - coll.size.x / 2f, coll.offset.y + coll.size.y / 2f, 0f), radio = coll.edgeRadius });
             vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(coll.offset.x + coll.size.x / 2f, coll.offset.y - coll.size.y / 2f, 0f), radio = coll.edgeRadius });
             vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(coll.offset.x - coll.size.x / 2f, coll.offset.y - coll.size.y / 2f, 0f), radio = coll.edgeRadius });
+            colliders.Add(coll, vertices);
         }
     }
-    static void GenerarCirculosCircle(List<Circulo> vertices)
+    static void GenerarCirculosCircle()
     {
         foreach (var coll in FindObjectsOfType<CircleCollider2D>())
         {
             if (!coll.enabled) continue;
             if (coll.usedByComposite) continue;
+            List<Circulo> vertices = new List<Circulo>();
             vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(coll.offset), radio = coll.transform.TransformVector(Vector3.right).magnitude * coll.radius });
+            colliders.Add(coll, vertices);
         }
     }
-    static void GenerarCirculosCapsule(List<Circulo> vertices)
+    static void GenerarCirculosCapsule()
     {
         foreach (var coll in FindObjectsOfType<CapsuleCollider2D>())
         {
             if (!coll.enabled) continue;
             if (coll.usedByComposite) continue;
+            List<Circulo> vertices = new List<Circulo>();
             Vector2 tamDeforme = coll.transform.TransformVector(coll.size);
             if ((coll.direction == CapsuleDirection2D.Horizontal && tamDeforme.x <= tamDeforme.y)
                 || (coll.direction == CapsuleDirection2D.Vertical && tamDeforme.y <= tamDeforme.x))
@@ -188,37 +208,43 @@ public class LuzDinamica2D : MonoBehaviour {
                 vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(coll.offset) + offset, radio = radio });
                 vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(coll.offset) - offset, radio = radio });
             }
+            colliders.Add(coll, vertices);
         }
     }
-    static void GenerarCirculosEdge(List<Circulo> vertices)
+    static void GenerarCirculosEdge()
     {
         foreach (var coll in FindObjectsOfType<EdgeCollider2D>())
         {
             if (!coll.enabled) continue;
             if (coll.usedByComposite) continue;
+            List<Circulo> vertices = new List<Circulo>();
             foreach (var p in coll.points)
             {
                 vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(p + coll.offset), radio = coll.edgeRadius });
             }
+            colliders.Add(coll, vertices);
         }
     }
-    static void GenerarCirculosPolygon(List<Circulo> vertices)
+    static void GenerarCirculosPolygon()
     {
         foreach (var coll in FindObjectsOfType<PolygonCollider2D>())
         {
             if (!coll.enabled) continue;
             if (coll.usedByComposite) continue;
+            List<Circulo> vertices = new List<Circulo>();
             foreach (var p in coll.points)
             {
                 vertices.Add(new Circulo() { pos = coll.transform.TransformPoint(p + coll.offset), radio = 0f });
             }
+            colliders.Add(coll, vertices);
         }
     }
-    static void GenerarCirculosComposite (List<Circulo> vertices)
+    static void GenerarCirculosComposite ()
     {
         foreach (var coll in FindObjectsOfType<CompositeCollider2D>())
         {
             if (!coll.enabled) continue;
+            List<Circulo> vertices = new List<Circulo>();
             float radio = coll.geometryType == CompositeCollider2D.GeometryType.Outlines ? coll.edgeRadius : 0f;
             for (int i = 0; i < coll.pathCount; i++)
             {
@@ -229,6 +255,7 @@ public class LuzDinamica2D : MonoBehaviour {
                     vertices.Add(new Circulo() { pos = coll.transform.TransformDirection(p) +coll.transform.position, radio = radio });
                 }
             }
+            colliders.Add(coll, vertices);
         }
     }
 
@@ -237,39 +264,41 @@ public class LuzDinamica2D : MonoBehaviour {
 #if UNITY_EDITOR
     private void OnDrawGizmos()
     {
-        List<Circulo> circs = new List<Circulo>();
-        GenerarCirculos(circs);
+        GenerarCirculos();
         destinosDeRayos.Clear();
         UnityEditor.Handles.color = Gizmos.color = Color.gray;
         UnityEditor.Handles.DrawWireDisc(transform.position, Vector3.forward, radio);
         UnityEditor.Handles.color = Gizmos.color = Color.magenta;
         float radio2 = radio * radio;
-        foreach (var c in circs)
+        foreach (var col in Physics2D.OverlapCircleAll(transform.position, radio))
         {
-            if ((c.pos - (Vector2)transform.position).sqrMagnitude <= radio2)
+            foreach (var c in colliders[col])
             {
-                destinosDeRayos.Add(new VectorDeLuz(c, transform.position,radio));
-                if(c.radio>0f)//if (destinosDeRayos[destinosDeRayos.Count - 1].horizonteAlfa != null)
+                //if ((c.pos - (Vector2)transform.position).sqrMagnitude <= radio2)
                 {
-                    destinosDeRayos.Add(destinosDeRayos[destinosDeRayos.Count - 1].horizonteAlfa);
-                    destinosDeRayos.Add(destinosDeRayos[destinosDeRayos.Count - 2].horizonteBeta);
+                    destinosDeRayos.Add(new VectorDeLuz(c, transform.position, radio));
+                    if (c.radio > 0f)//if (destinosDeRayos[destinosDeRayos.Count - 1].horizonteAlfa != null)
+                    {
+                        destinosDeRayos.Add(destinosDeRayos[destinosDeRayos.Count - 1].horizonteAlfa);
+                        destinosDeRayos.Add(destinosDeRayos[destinosDeRayos.Count - 2].horizonteBeta);
+                    }
                 }
-            }
 
-            if (c.radio == 0f)
-            {
-                Gizmos.DrawLine(c.pos - Vector2.up * .1f, c.pos + Vector2.up * .1f);
-                Gizmos.DrawLine(c.pos - Vector2.right * .1f, c.pos + Vector2.right * .1f);
-                //if ((c.pos - (Vector2)transform.position).sqrMagnitude <= radio2) destinosDeRayos.Add(c.pos);
-            }
-            else
-            {
-                UnityEditor.Handles.DrawWireDisc(c.pos, Vector3.forward, c.radio);
-                /*if ((c.pos - (Vector2)transform.position).sqrMagnitude <= radio2)
+                if (c.radio == 0f)
                 {
-                    destinosDeRayos.Add(c.pos + c.OffsetRayo(transform.position, 1f));
-                    destinosDeRayos.Add(c.pos + c.OffsetRayo(transform.position, -1f));
-                }*/
+                    Gizmos.DrawLine(c.pos - Vector2.up * .1f, c.pos + Vector2.up * .1f);
+                    Gizmos.DrawLine(c.pos - Vector2.right * .1f, c.pos + Vector2.right * .1f);
+                    //if ((c.pos - (Vector2)transform.position).sqrMagnitude <= radio2) destinosDeRayos.Add(c.pos);
+                }
+                else
+                {
+                    UnityEditor.Handles.DrawWireDisc(c.pos, Vector3.forward, c.radio);
+                    /*if ((c.pos - (Vector2)transform.position).sqrMagnitude <= radio2)
+                    {
+                        destinosDeRayos.Add(c.pos + c.OffsetRayo(transform.position, 1f));
+                        destinosDeRayos.Add(c.pos + c.OffsetRayo(transform.position, -1f));
+                    }*/
+                }
             }
         }
         if (destinosDeRayos.Count > 0)
@@ -286,7 +315,7 @@ public class LuzDinamica2D : MonoBehaviour {
             {
                 VectorDeLuz a = destinosDeRayos[i];
                 VectorDeLuz b = destinosDeRayos[i + 1];
-                bool hover = PuntoEnTriangulo(a.punto, b.punto, transform.position, UnityEditor.HandleUtility.GUIPointToWorldRay(UnityEngine.Event.current.mousePosition).GetPoint(1f));
+                bool hover = PuntoEnTriangulo(a.puntoHit, b.puntoHit, transform.position, UnityEditor.HandleUtility.GUIPointToWorldRay(UnityEngine.Event.current.mousePosition).GetPoint(1f));
                 //if (hover)
                 {
                     if (hover)
@@ -305,21 +334,43 @@ public class LuzDinamica2D : MonoBehaviour {
                     UnityEditor.Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.white, .7f);
                     if (a.rayoInterrumpido && b.rayoInterrumpido)
                     {
-                          UnityEditor.Handles.DrawAAConvexPolygon(a.rayoInterrumpido? a.puntoHit:a.punto, b.rayoInterrumpido? b.puntoHit:b.punto, transform.position);
+                          UnityEditor.Handles.DrawAAConvexPolygon(a.PuntoCercano,b.PuntoCercano, transform.position);
                     }
                     else
                     {
-                        Vector2 medioCerca = Vector2.Lerp(a.rayoInterrumpido ? a.puntoHit : a.punto, b.rayoInterrumpido ? b.puntoHit : b.punto, .5f);
+                        Vector2 medioCerca = Vector2.Lerp(a.PuntoCercano, b.PuntoCercano, .5f);
                         Vector2 medioLejos = Vector2.Lerp(!a.rayoInterrumpido ? a.puntoHit : a.punto, !b.rayoInterrumpido ? b.puntoHit : b.punto, .5f);
                         Vector2 rayoCercaLejos = medioLejos - medioCerca;
                         //Vector2 perp = Vector2.Perpendicular(a.punto- b.punto).normalized;
 
-                        cantHits = Physics2D.Raycast(transform.position, Vector2.Lerp(a.rayoDesdeOrigen, b.rayoDesdeOrigen, .5f), filtroVacio, hits, radio);
+                        //cantHits = Physics2D.Raycast(transform.position, Vector2.Lerp(a.rayoDesdeOrigen, b.rayoDesdeOrigen, .5f), filtroVacio, hits, radio);
+                        cantHits = Physics2D.Raycast(transform.position, medioCerca-(Vector2)transform.position, filtroVacio, hits, radio);
                         //cantHits = Physics2D.Raycast(medio-perp*.1f, perp, filtroVacio, hits, .2f);
                         //cantHits = Physics2D.Raycast(medioCerca, rayoCercaLejos, filtroVacio, hits, rayoCercaLejos.magnitude);
+                        if (hover)
+                        {
+                            UnityEditor.Handles.DrawSolidDisc(medioCerca, Vector3.forward, .01f);
+                        }
                         if (cantHits > 0)
                         {
-                            UnityEditor.Handles.DrawAAConvexPolygon(a.rayoInterrumpido ? a.puntoHit : a.punto, b.rayoInterrumpido ? b.puntoHit : b.punto, transform.position);
+                            if (.99f * hits[0].distance < (a.DistanciaCercana+b.DistanciaCercana)*.5f)
+                            {
+                                UnityEditor.Handles.DrawAAConvexPolygon(a.PuntoCercano, b.PuntoCercano, transform.position);
+                            }
+                            else
+                            {
+                                if (a.DistanciaCercana > b.DistanciaCercana) UnityEditor.Handles.DrawAAConvexPolygon(a.PuntoCercano, b.puntoHit, transform.position);
+                                else UnityEditor.Handles.DrawAAConvexPolygon(a.puntoHit, b.PuntoCercano, transform.position);
+                            }
+                            if (hover)
+                            {
+                                UnityEditor.Handles.DrawSolidRectangleWithOutline(new Rect( hits[0].point-Vector2.one * .01f, Vector2.one*.02f),Color.clear,Color.red);
+                                GUI.contentColor = Color.red;
+                                UnityEditor.Handles.Label(medioCerca, (.99f * hits[0].distance).ToString("0.000 <") + ( (a.DistanciaCercana + b.DistanciaCercana) * .5f).ToString("\n0.000"));
+                                UnityEditor.Handles.Label(a.PuntoCercano, a.DistanciaCercana.ToString("\n0.00"));
+                                UnityEditor.Handles.Label(b.PuntoCercano, b.DistanciaCercana.ToString("\n0.00"));
+                                GUI.contentColor = Color.white;
+                            }
                         }
                         else UnityEditor.Handles.DrawAAConvexPolygon(a.puntoHit, b.puntoHit, transform.position);
 
@@ -335,7 +386,7 @@ public class LuzDinamica2D : MonoBehaviour {
                                     else UnityEditor.Handles.DrawAAConvexPolygon(a.puntoHit, b.rayoInterrumpido ? b.puntoHit : b.punto, transform.position);
                                 }
                                 /*UnityEditor.Handles.DrawAAConvexPolygon(hits[0].distance>a.distancia? a.puntoHit:a.punto, hits[0].distance > b.distancia ? b.puntoHit : b.punto, transform.position);*/
-                                if (hover)
+                            if (hover)
                                 {
                                     UnityEditor.Handles.Label(hits[0].point, hits[0].distance.ToString("0.00\n") + (rayoCercaLejos.magnitude - hits[0].distance).ToString());
                                     UnityEditor.Handles.Label(a.punto, a.distancia.ToString("0.00"));
@@ -348,7 +399,8 @@ public class LuzDinamica2D : MonoBehaviour {
                         Gizmos.color =Color.Lerp(Color.clear, Color.green,hover?1f:.2f);
                         //Gizmos.DrawRay(medio - perp * .1f, perp*.2f);
                         //Gizmos.DrawRay(medioCerca, rayoCercaLejos);
-                        Gizmos.DrawRay(transform.position, Vector2.Lerp(a.rayoDesdeOrigen, b.rayoDesdeOrigen, .5f).normalized*radio);
+                        //Gizmos.DrawRay(transform.position, Vector2.Lerp(a.rayoDesdeOrigen, b.rayoDesdeOrigen, .5f).normalized*radio);
+                        Gizmos.DrawLine(transform.position, medioCerca);
                     }
                 }
             }
