@@ -1,6 +1,9 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class LuzDinamica2D : MonoBehaviour {
     static ContactFilter2D filtroVacio= new ContactFilter2D();
@@ -23,7 +26,7 @@ public class LuzDinamica2D : MonoBehaviour {
     }
     class VectorDeLuz:System.IComparable<VectorDeLuz>
     {
-        public bool rayoInterrumpido;
+        public bool rayoInterrumpido,toqueVerticeClave;
        public float angulo;
         public float distancia;
         public float distancia2;
@@ -96,6 +99,7 @@ public class LuzDinamica2D : MonoBehaviour {
                 {
                     if (hits[0].distance*.999f < distancia)
                     {//choco con vertice clave
+                        toqueVerticeClave = true;
                         if (cantHits > 1)
                         {//choco con algo mas ademas de vertice clave
                             /*hits[0].point = hits[1].point;
@@ -147,9 +151,122 @@ public class LuzDinamica2D : MonoBehaviour {
             return angulo.CompareTo(otro.angulo);
         }
     }
+    class HazDeLuz
+    {
+        public enum Forma
+        {
+            Largo,Corto,CortoALargo,LargoACorto
+        }
+        Forma forma = Forma.Corto;
+        Vector3 origen;
+        VectorDeLuz conReloj, contraReloj;
+        public HazDeLuz(VectorDeLuz conReloj, VectorDeLuz contraReloj)
+        {
+            this.conReloj = conReloj;
+            this.contraReloj = contraReloj;
+            origen = conReloj.origen;
+        }
+        public bool Hover(Vector3 punto)
+        {
+            return PuntoEnTriangulo(conReloj.puntoHit, contraReloj.puntoHit, origen, punto);
+        }
+
+        public void Gizmo(float radio)
+        {
+            bool hover = Hover(HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));
+            //if (hover)
+            {
+                if (hover)
+                {
+                    Gizmos.color = conReloj.rayoInterrumpido ? Color.red : Color.blue;
+                    if (conReloj.toqueVerticeClave) Gizmos.color += Color.green;
+                    conReloj.Gizmo();
+                    Gizmos.color = contraReloj.rayoInterrumpido ? Color.red : Color.blue;
+                    if (contraReloj.toqueVerticeClave) Gizmos.color += Color.green;
+                    contraReloj.Gizmo();
+
+                    /*    Gizmos.color = Color.yellow;
+                    Gizmos.DrawRay(a.puntoHit,Vector2.Perpendicular( a.hits[0].normal) * 999f);
+                    Gizmos.DrawRay(a.puntoHit, Vector2.Perpendicular(-a.hits[0].normal) * 999f);
+                    Gizmos.DrawRay(b.puntoHit, Vector2.Perpendicular(b.hits[0].normal) * 999f);
+                    Gizmos.DrawRay(b.puntoHit, Vector2.Perpendicular(-b.hits[0].normal) * 999f);*/
+                }
+                Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.white, .7f);
+                if (conReloj.rayoInterrumpido && contraReloj.rayoInterrumpido)
+                {
+                    Handles.DrawAAConvexPolygon(conReloj.PuntoCercano, contraReloj.PuntoCercano, origen);
+                }
+                else
+                {
+                    Vector2 medioCerca = Vector2.Lerp(conReloj.PuntoCercano, contraReloj.PuntoCercano, .5f);
+                    Vector2 medioLejos = Vector2.Lerp(!conReloj.rayoInterrumpido ? conReloj.puntoHit : conReloj.punto, !contraReloj.rayoInterrumpido ? contraReloj.puntoHit : contraReloj.punto, .5f);
+                    Vector2 rayoCercaLejos = medioLejos - medioCerca;
+                    //Vector2 perp = Vector2.Perpendicular(a.punto- b.punto).normalized;
+
+                    //cantHits = Physics2D.Raycast(transform.position, Vector2.Lerp(a.rayoDesdeOrigen, b.rayoDesdeOrigen, .5f), filtroVacio, hits, radio);
+                    cantHits = Physics2D.Raycast(origen, medioCerca - (Vector2)origen, filtroVacio, hits, radio);
+                    //cantHits = Physics2D.Raycast(medio-perp*.1f, perp, filtroVacio, hits, .2f);
+                    //cantHits = Physics2D.Raycast(medioCerca, rayoCercaLejos, filtroVacio, hits, rayoCercaLejos.magnitude);
+                    if (hover)
+                    {
+                        Handles.DrawSolidDisc(medioCerca, Vector3.forward, .01f);
+                    }
+                    if (cantHits > 0)
+                    {
+                        if (.99f * hits[0].distance < (conReloj.DistanciaCercana + contraReloj.DistanciaCercana) * .5f)
+                        {
+                            Handles.DrawAAConvexPolygon(conReloj.PuntoCercano, contraReloj.PuntoCercano, origen);
+                        }
+                        else
+                        {
+                            if (conReloj.DistanciaCercana > contraReloj.DistanciaCercana) Handles.DrawAAConvexPolygon(conReloj.PuntoCercano, contraReloj.puntoHit, origen);
+                            else Handles.DrawAAConvexPolygon(conReloj.puntoHit, contraReloj.PuntoCercano, origen);
+                        }
+                        if (hover)
+                        {
+                            Handles.DrawSolidRectangleWithOutline(new Rect(hits[0].point - Vector2.one * .01f, Vector2.one * .02f), Color.clear, Color.red);
+                            GUI.contentColor = Color.red;
+                            Handles.Label(medioCerca, (.99f * hits[0].distance).ToString("0.000 <") + ((conReloj.DistanciaCercana + contraReloj.DistanciaCercana) * .5f).ToString("\n0.000"));
+                            Handles.Label(conReloj.PuntoCercano, conReloj.DistanciaCercana.ToString("\n0.00"));
+                            Handles.Label(contraReloj.PuntoCercano, contraReloj.DistanciaCercana.ToString("\n0.00"));
+                            GUI.contentColor = Color.white;
+                        }
+                    }
+                    else Handles.DrawAAConvexPolygon(conReloj.puntoHit, contraReloj.puntoHit, origen);
+                    
+                    Gizmos.color = Color.Lerp(Color.clear, Color.green, hover ? 1f : .2f);
+
+                    Gizmos.DrawLine(origen, medioCerca);
+                }
+            }
+        }
+
+            bool PuntoEnTriangulo(Vector2 triA, Vector2 triB, Vector2 triC, Vector2 p) {
+            // Compute vectors        
+            var v0 = triC - triA;
+            var v1 = triB - triA;
+            var v2 = p - triA;
+
+            // Compute dot products
+            var dot00 = Vector2.Dot(v0, v0);
+            var dot01 = Vector2.Dot(v0, v1);
+            var dot02 = Vector2.Dot(v0, v2);
+            var dot11 = Vector2.Dot(v1, v1);
+            var dot12 = Vector2.Dot(v1, v2);
+
+            // Compute barycentric coordinates
+            var invDenom = 1f / (dot00 * dot11 - dot01 * dot01);
+            var u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+            var v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+
+            // Check if point is in triangle
+            return (u >= 0) && (v >= 0) && (u + v < 1);
+        }
+    }
 
     public float radio,grosorRayo=.001f;
     List<VectorDeLuz> destinosDeRayos = new List<VectorDeLuz>();
+    List<HazDeLuz> hacesDeLuz = new List<HazDeLuz>();
 
     static void GenerarCirculos()
     {
@@ -259,12 +376,11 @@ public class LuzDinamica2D : MonoBehaviour {
         }
     }
 
-
-
 #if UNITY_EDITOR
     private void OnDrawGizmos()
     {
         GenerarCirculos();
+        hacesDeLuz.Clear();
         destinosDeRayos.Clear();
         UnityEditor.Handles.color = Gizmos.color = Color.gray;
         UnityEditor.Handles.DrawWireDisc(transform.position, Vector3.forward, radio);
@@ -303,9 +419,9 @@ public class LuzDinamica2D : MonoBehaviour {
         }
         if (destinosDeRayos.Count > 0)
         {
-            foreach(var rayo in destinosDeRayos)
+            foreach (var rayo in destinosDeRayos)
             {
-                Gizmos.color =Color.Lerp(Color.clear,rayo.rayoInterrumpido?Color.red: Color.blue,.3f);
+                Gizmos.color = Color.Lerp(Color.clear, rayo.rayoInterrumpido ? Color.red : Color.blue, .3f);
                 rayo.Gizmo();
             }
 
@@ -313,272 +429,11 @@ public class LuzDinamica2D : MonoBehaviour {
             destinosDeRayos.Add(destinosDeRayos[0]);
             for (int i = 0; i < destinosDeRayos.Count - 1; i++)
             {
-                VectorDeLuz a = destinosDeRayos[i];
-                VectorDeLuz b = destinosDeRayos[i + 1];
-                bool hover = PuntoEnTriangulo(a.puntoHit, b.puntoHit, transform.position, UnityEditor.HandleUtility.GUIPointToWorldRay(UnityEngine.Event.current.mousePosition).GetPoint(1f));
-                //if (hover)
-                {
-                    if (hover)
-                    {
-                        Gizmos.color = a.rayoInterrumpido ? Color.red : Color.blue;
-                        a.Gizmo();
-                        Gizmos.color = b.rayoInterrumpido ? Color.red : Color.blue;
-                        b.Gizmo();
-
-                        /*    Gizmos.color = Color.yellow;
-                        Gizmos.DrawRay(a.puntoHit,Vector2.Perpendicular( a.hits[0].normal) * 999f);
-                        Gizmos.DrawRay(a.puntoHit, Vector2.Perpendicular(-a.hits[0].normal) * 999f);
-                        Gizmos.DrawRay(b.puntoHit, Vector2.Perpendicular(b.hits[0].normal) * 999f);
-                        Gizmos.DrawRay(b.puntoHit, Vector2.Perpendicular(-b.hits[0].normal) * 999f);*/
-                    }
-                    UnityEditor.Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.white, .7f);
-                    if (a.rayoInterrumpido && b.rayoInterrumpido)
-                    {
-                          UnityEditor.Handles.DrawAAConvexPolygon(a.PuntoCercano,b.PuntoCercano, transform.position);
-                    }
-                    else
-                    {
-                        Vector2 medioCerca = Vector2.Lerp(a.PuntoCercano, b.PuntoCercano, .5f);
-                        Vector2 medioLejos = Vector2.Lerp(!a.rayoInterrumpido ? a.puntoHit : a.punto, !b.rayoInterrumpido ? b.puntoHit : b.punto, .5f);
-                        Vector2 rayoCercaLejos = medioLejos - medioCerca;
-                        //Vector2 perp = Vector2.Perpendicular(a.punto- b.punto).normalized;
-
-                        //cantHits = Physics2D.Raycast(transform.position, Vector2.Lerp(a.rayoDesdeOrigen, b.rayoDesdeOrigen, .5f), filtroVacio, hits, radio);
-                        cantHits = Physics2D.Raycast(transform.position, medioCerca-(Vector2)transform.position, filtroVacio, hits, radio);
-                        //cantHits = Physics2D.Raycast(medio-perp*.1f, perp, filtroVacio, hits, .2f);
-                        //cantHits = Physics2D.Raycast(medioCerca, rayoCercaLejos, filtroVacio, hits, rayoCercaLejos.magnitude);
-                        if (hover)
-                        {
-                            UnityEditor.Handles.DrawSolidDisc(medioCerca, Vector3.forward, .01f);
-                        }
-                        if (cantHits > 0)
-                        {
-                            if (.99f * hits[0].distance < (a.DistanciaCercana+b.DistanciaCercana)*.5f)
-                            {
-                                UnityEditor.Handles.DrawAAConvexPolygon(a.PuntoCercano, b.PuntoCercano, transform.position);
-                            }
-                            else
-                            {
-                                if (a.DistanciaCercana > b.DistanciaCercana) UnityEditor.Handles.DrawAAConvexPolygon(a.PuntoCercano, b.puntoHit, transform.position);
-                                else UnityEditor.Handles.DrawAAConvexPolygon(a.puntoHit, b.PuntoCercano, transform.position);
-                            }
-                            if (hover)
-                            {
-                                UnityEditor.Handles.DrawSolidRectangleWithOutline(new Rect( hits[0].point-Vector2.one * .01f, Vector2.one*.02f),Color.clear,Color.red);
-                                GUI.contentColor = Color.red;
-                                UnityEditor.Handles.Label(medioCerca, (.99f * hits[0].distance).ToString("0.000 <") + ( (a.DistanciaCercana + b.DistanciaCercana) * .5f).ToString("\n0.000"));
-                                UnityEditor.Handles.Label(a.PuntoCercano, a.DistanciaCercana.ToString("\n0.00"));
-                                UnityEditor.Handles.Label(b.PuntoCercano, b.DistanciaCercana.ToString("\n0.00"));
-                                GUI.contentColor = Color.white;
-                            }
-                        }
-                        else UnityEditor.Handles.DrawAAConvexPolygon(a.puntoHit, b.puntoHit, transform.position);
-
-                        if (false){
-                            if (cantHits > 0)
-                            {
-                                //hits[0].distance += (a.distancia+b.distancia)/2f;
-                                if (hits[0].distance < 0.001f) UnityEditor.Handles.DrawAAConvexPolygon(a.rayoInterrumpido ? a.puntoHit : a.punto, b.rayoInterrumpido ? b.puntoHit : b.punto, transform.position);
-                                else if (hits[0].distance > rayoCercaLejos.magnitude * .999f) UnityEditor.Handles.DrawAAConvexPolygon(a.puntoHit, b.puntoHit, transform.position);
-                                else
-                                {
-                                    if (a.distancia > b.distancia) UnityEditor.Handles.DrawAAConvexPolygon(a.rayoInterrumpido ? a.puntoHit : a.punto, b.puntoHit, transform.position);
-                                    else UnityEditor.Handles.DrawAAConvexPolygon(a.puntoHit, b.rayoInterrumpido ? b.puntoHit : b.punto, transform.position);
-                                }
-                                /*UnityEditor.Handles.DrawAAConvexPolygon(hits[0].distance>a.distancia? a.puntoHit:a.punto, hits[0].distance > b.distancia ? b.puntoHit : b.punto, transform.position);*/
-                            if (hover)
-                                {
-                                    UnityEditor.Handles.Label(hits[0].point, hits[0].distance.ToString("0.00\n") + (rayoCercaLejos.magnitude - hits[0].distance).ToString());
-                                    UnityEditor.Handles.Label(a.punto, a.distancia.ToString("0.00"));
-                                    UnityEditor.Handles.Label(b.punto, b.distancia.ToString("0.00"));
-                                }
-                            }
-                            else UnityEditor.Handles.DrawAAConvexPolygon(a.puntoHit, b.puntoHit, transform.position);
-                        }
-
-                        Gizmos.color =Color.Lerp(Color.clear, Color.green,hover?1f:.2f);
-                        //Gizmos.DrawRay(medio - perp * .1f, perp*.2f);
-                        //Gizmos.DrawRay(medioCerca, rayoCercaLejos);
-                        //Gizmos.DrawRay(transform.position, Vector2.Lerp(a.rayoDesdeOrigen, b.rayoDesdeOrigen, .5f).normalized*radio);
-                        Gizmos.DrawLine(transform.position, medioCerca);
-                    }
-                }
+                hacesDeLuz.Add(new HazDeLuz(destinosDeRayos[i], destinosDeRayos[i + 1]));
+                hacesDeLuz[i].Gizmo(radio);
             }
-
-                /*
-                RaycastHit2D[] hits = new RaycastHit2D[2],hits2=new RaycastHit2D[2];
-                int cantHits = 0,cantHits2=0;
-                //destinosDeRayos.Sort((Vector2 a, Vector2 b) => { return Mathf.Atan2(a.y - transform.position.y, a.x - transform.position.x).CompareTo(Mathf.Atan2(b.y - transform.position.y, b.x - transform.position.x)); });
-                destinosDeRayos.Sort();
-                destinosDeRayos.Add(destinosDeRayos[0]);
-
-                for (int i = 0; i < destinosDeRayos.Count-1; i++)
-                {
-                    VectorDeLuz a = destinosDeRayos[i];
-                    VectorDeLuz b = destinosDeRayos[i+1];
-                    if (PuntoEnTriangulo(a.punto, b.punto, transform.position, UnityEditor.HandleUtility.GUIPointToWorldRay(UnityEngine.Event.current.mousePosition).GetPoint(1f)))
-                    {
-
-                        UnityEditor.Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.red, .7f);
-                        cantHits = Physics2D.Raycast(transform.position, a.rayoDesdeOrigen, new ContactFilter2D(), hits, radio);
-                        cantHits2 = Physics2D.Raycast(transform.position, b.rayoDesdeOrigen, new ContactFilter2D(), hits2, radio);
-                        if (cantHits > 0)
-                        {
-                            if (hits[0].distance > a.distancia*.999f)
-                            {// es limite o aun mas alla
-                                if (hits[0].distance > a.distancia)
-                                {
-                                    hits[1].point = hits[0].point;
-                                    hits[1].distance = hits[0].distance;
-                                }
-                                else
-                                {
-                                    if (cantHits < 2)
-                                    {
-                                        hits[1].point = (Vector2)transform.position + a.rayoDesdeOrigen.normalized * radio;
-                                        hits[1].distance = radio;
-                                    }
-                                }
-                                hits[0].point = a.punto;
-                                hits[0].distance = a.distancia;
-                                cantHits = 2;
-                            }
-                            else
-                            {//esta mas adentro
-                                UnityEditor.Handles.DrawWireDisc(hits[0].point, Vector3.forward, .1f);
-                                cantHits = 1;
-                            }
-                        }
-                        else
-                        {
-                            hits[0].point = a.punto;
-                            hits[0].distance = a.distancia;
-                            hits[1].point = (Vector2)transform.position + a.rayoDesdeOrigen.normalized * radio;
-                            hits[1].distance = radio;
-                            cantHits = 2;
-                        }
-                        if (cantHits2 > 0)
-                        {
-                            if (hits2[0].distance > b.distancia * .999f)
-                            {
-                                if (hits2[0].distance > b.distancia)
-                                {
-                                    hits2[1].point = hits2[0].point;
-                                    hits2[1].distance = hits2[0].distance;
-                                }
-                                else
-                                {
-                                    if (cantHits2 < 2)
-                                    {
-                                        hits2[1].point = (Vector2)transform.position + b.rayoDesdeOrigen.normalized * radio;
-                                        hits2[1].distance = radio;
-                                    }
-                                }
-                                hits2[0].point = b.punto;
-                                hits2[0].distance = b.distancia;
-                                cantHits2 = 2;
-                            }
-                            else
-                            {
-                                UnityEditor.Handles.DrawWireDisc(hits2[0].point, Vector3.forward, .1f);
-                                cantHits2 = 1;
-                            }
-                        }
-                        else
-                        {
-                            hits2[0].point = b.punto;
-                            hits2[0].distance = b.distancia;
-                            hits2[1].point = (Vector2)transform.position + b.rayoDesdeOrigen.normalized * radio;
-                            hits2[1].distance = radio;
-                            cantHits2 = 2;
-                        }
-
-                        if (cantHits > 1 && cantHits2 > 1)
-                        {
-                            UnityEditor.Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.blue, .3f);
-                            UnityEditor.Handles.DrawAAConvexPolygon(hits[1].point, hits2[1].point, transform.position);
-                        }
-                        else
-                        {
-                            UnityEditor.Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.red, .3f);
-                            UnityEditor.Handles.DrawAAConvexPolygon(hits[0].point, hits2[0].point, transform.position);
-                        }
-                        break;
-                    }
-                }
-
-                    VectorDeLuz previo = destinosDeRayos[0];
-                Vector2 previoHit = previo.punto;
-
-                foreach (var r in destinosDeRayos)
-                {
-                    UnityEditor.Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.green, .2f);
-                    Gizmos.DrawLine(r.punto, previo.punto);
-                    Gizmos.DrawRay( transform.position, r.rayoDesdeOrigen);
-                    previo = r;
-                    if(grosorRayo>0f)cantHits = Physics2D.CircleCast(transform.position, grosorRayo, r.rayoDesdeOrigen, new ContactFilter2D(), hits, radio);
-                    else cantHits = Physics2D.Raycast(transform.position, r.rayoDesdeOrigen, new ContactFilter2D(), hits, radio);
-                    UnityEditor.Handles.color = Gizmos.color = Color.green;
-                    if (cantHits > 0)
-                    {
-                        Gizmos.DrawLine(previoHit, hits[0].point);
-                        previoHit = hits[0].point;
-                        UnityEditor.Handles.color = Gizmos.color = Color.yellow;
-                        Gizmos.DrawRay(hits[0].point, hits[0].normal*.5f);
-                        UnityEditor.Handles.color = Gizmos.color = Color.blue;
-                        if (cantHits > 1)
-                        {
-                            Gizmos.DrawLine(previoHit, hits[1].point);
-                            //UnityEditor.Handles.Label(hits[1].point,"\n"+hits[0].distance+"_"+hits[1].distance);
-
-                            if (hits[0].distance > hits[1].distance)
-                            {
-                                UnityEditor.Handles.color = Gizmos.color = Color.blue;
-                                UnityEditor.Handles.DrawWireDisc(hits[0].point, Vector3.forward, .5f);
-                            }
-
-                        }
-                        else
-                        {
-                            Gizmos.DrawLine(previoHit, (Vector2)transform.position + (r.rayoDesdeOrigen).normalized * radio);
-                           // UnityEditor.Handles.Label(r.punto, "\n" + hits[0].distance + "_" + radio);
-                        }
-                    }
-                    else
-                    {
-                        //Gizmos.DrawLine(previoHit, (Vector2)transform.position+(r - (Vector2)transform.position).normalized*radio );
-                        //previoHit = (Vector2)transform.position + (r - (Vector2)transform.position).normalized * radio;
-                        Gizmos.DrawLine(previoHit, r.punto);
-                        previoHit = r.punto;
-                        UnityEditor.Handles.color = Gizmos.color = Color.cyan;
-                        Gizmos.DrawLine(previoHit, (Vector2)transform.position + (r.rayoDesdeOrigen).normalized * radio);
-                    }
-                }*/
-            }
+        }
     }
 
-    bool PuntoEnTriangulo(Vector2 triA, Vector2 triB, Vector2 triC, Vector2 p)
-    {
-        // Compute vectors        
-        var v0 = triC - triA;
-        var v1 = triB - triA;
-        var v2 = p - triA;
-
-        // Compute dot products
-        var dot00 = Vector2.Dot(v0, v0);
-        var dot01 = Vector2.Dot(v0, v1);
-        var dot02 = Vector2.Dot(v0, v2);
-        var dot11 = Vector2.Dot(v1, v1);
-        var dot12 = Vector2.Dot(v1, v2);
-
-        // Compute barycentric coordinates
-        var invDenom = 1f / (dot00 * dot11 - dot01 * dot01);
-        var u = (dot11 * dot02 - dot01 * dot12) * invDenom;
-        var v = (dot00 * dot12 - dot01 * dot02) * invDenom;
-
-        // Check if point is in triangle
-        return (u >= 0) && (v >= 0) && (u + v < 1);
-
-    }
 #endif
 }
