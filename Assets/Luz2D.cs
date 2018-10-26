@@ -11,7 +11,6 @@ using UnityEditor;
 [ExecuteInEditMode]
 public class Luz2D : MonoBehaviour
 {
-    static ContactFilter2D filtroVacio=new ContactFilter2D();
     static float epsilonMenor = .001f;
     static float epsilonMayor = .999f;
     Dictionary<Collider2D, CirculoVertice[]> colliders = new Dictionary<Collider2D, CirculoVertice[]>();
@@ -21,6 +20,7 @@ public class Luz2D : MonoBehaviour
     public ContactFilter2D filtro;
     public float radio = 5f;
     public Color color = Color.white;
+    public float maximaAperturaHaz = 45f;
     public Material material;
      
     Collider2D[] collidersTocados = new Collider2D[500];
@@ -29,12 +29,6 @@ public class Luz2D : MonoBehaviour
     new CircleCollider2D collider;
     CircleCollider2D Collider
     { get { return collider ? collider : collider = GetComponent<CircleCollider2D>(); } }
-    /*MeshFilter meshFilter;
-    MeshFilter MeshFilter
-    { get { return meshFilter ? meshFilter : meshFilter = GetComponent<MeshFilter>(); } }
-    MeshRenderer meshRenderer;
-    MeshRenderer MeshRenderer
-    { get { return meshRenderer ? meshRenderer : meshRenderer = GetComponent<MeshRenderer>(); } }*/
     Mesh mesh;
 
     private void Update()
@@ -53,6 +47,7 @@ public class Luz2D : MonoBehaviour
         Collider.isTrigger = true;
         Collider.radius = radio;
         Collider.offset = Vector2.zero;
+        if (maximaAperturaHaz < 0f) maximaAperturaHaz *= -1;
     }
 
     class CirculoVertice
@@ -102,7 +97,7 @@ public class Luz2D : MonoBehaviour
         }
             foreach (var haz in hacesDeLuz)
             {
-                haz.Gizmo(radio, mesh==null || !enabled);
+                haz.Gizmo(mesh==null || !enabled);
             }
     }
 #endif
@@ -168,6 +163,18 @@ public class Luz2D : MonoBehaviour
             distancia = puntoDestinoRelativo.magnitude;
             distanciaSq = distancia * distancia;
         }
+        public VectorDeLuz(float anguloRadianes, Vector2 desde, ContactFilter2D filtro, float radio = 0f)
+        {
+            this.angulo = anguloRadianes;
+            origen = desde;
+            rayo = new Ray2D(origen, new Vector2(Mathf.Cos(anguloRadianes),Mathf.Sin(anguloRadianes)));
+            distancia = radio*1.1f;
+            puntoDestino = rayo.GetPoint(distancia);
+            puntoDestinoRelativo = rayo.direction * distancia;
+            distanciaSq = distancia * distancia;
+
+            CalcularRayo(filtro, radio);
+        }
 
         public void CalcularRayo(ContactFilter2D filtro, float radio=0)
         {
@@ -180,8 +187,9 @@ public class Luz2D : MonoBehaviour
                 }
                 else
                 {
-                    if (hits[0].distance * epsilonMayor < distancia && hits[0].collider == colliderPadre)
+                    if (hits[0].distance * epsilonMayor < distancia && hits[0].collider == colliderPadre && colliderPadre)
                     {//choco con vertice clave (lo mismo, el chanqui) en otro caso choco con lo siguiente
+                        //si no tiene collider padre es porque es rayo generado para resolucion angular
                         toqueVerticeClave = true;
                         if (!esHorizonte && colliderPadre.OverlapPoint(rayo.GetPoint(hits[0].distance / epsilonMayor)))
                         {//vertice clave igual es como un coso grueso y en realidad interrumpe (osea estamos dentro)
@@ -238,7 +246,6 @@ public class Luz2D : MonoBehaviour
         public bool TieneInterseccion { get { return conInterseccion; } }
         public Vector3 Interseccion { get { return puntoInterseccion; } }
 
-
         bool hover;
 
         Vector3 origen;
@@ -246,14 +253,15 @@ public class Luz2D : MonoBehaviour
 
         Vector2 frente, puntoInterseccion;
 
-        Ray2D rayoInterno;
         int cantHits = 0;
+        float radio;
         RaycastHit2D[] hitsRayoInterno = new RaycastHit2D[1];
 
         bool conRelojCerca, contraRelojCerca, conInterseccion;
         float radioFrente, radioCentro;
-        public HazDeLuz(ContactFilter2D filtro, VectorDeLuz conReloj, VectorDeLuz contraReloj)
+        public HazDeLuz(ContactFilter2D filtro, VectorDeLuz conReloj, VectorDeLuz contraReloj, float radio = 0f)
         {
+            this.radio = radio;
             this.conReloj = conReloj;
             this.contraReloj = contraReloj;
             origen = conReloj.origen;
@@ -371,9 +379,14 @@ public class Luz2D : MonoBehaviour
                     }
                 }
             }
+
+            if (conInterseccion)
+            {//vamos a forzar que la intereseccion se de dentro del radio del cosoooo
+                if (Vector2.Distance(origen, puntoInterseccion) > radio) puntoInterseccion = Vector2.MoveTowards(origen, puntoInterseccion, radio);
+            }
         }
 
-        public void Gizmo(float radio, bool dibujarDibujo = true)
+        public void Gizmo(bool dibujarDibujo = true)
         {
             if (hover)
             {
@@ -435,10 +448,35 @@ public class Luz2D : MonoBehaviour
         if (destinosDeRayos.Count > 0)
         {
             destinosDeRayos.Sort();
-            destinosDeRayos.Add(destinosDeRayos[0]);
+            destinosDeRayos.Add(new VectorDeLuz(destinosDeRayos[0].angulo + Mathf.PI*2f, transform.position, filtro, radio));
+            //destinosDeRayos.Add(destinosDeRayos[0]);
+            /*if (maximaAperturaHaz > 0f)
+            {
+                float diferenciaAngular = 0f;
+                var maximaAperturaHazRadianes = maximaAperturaHaz * Mathf.Deg2Rad;
+                for (int i = 0; i < destinosDeRayos.Count - 1; i++)
+                {//aca chequeamos que los rayos de luz no tengan mucha diferencia angular entre si (para que el resultado no sea tan cuadrado en caso de pocos colliders en alguna region y un re fix cuando no hay al menos dos en cuadrantes opuestos
+                    diferenciaAngular = destinosDeRayos[i + 1].angulo - destinosDeRayos[i].angulo;
+                    if (diferenciaAngular > maximaAperturaHazRadianes)
+                    {
+                        var rayosExtrasMasUno = Mathf.FloorToInt(diferenciaAngular / maximaAperturaHazRadianes) + 1;
+                        var distEntreRayos = diferenciaAngular / rayosExtrasMasUno;
+                        int indexOffset = 1;
+                        for (float r = 0f; r < rayosExtrasMasUno; r++)
+                        {
+                            destinosDeRayos.Insert(0, new VectorDeLuz(destinosDeRayos[i].angulo + distEntreRayos * r, transform.position, filtro, radio));
+                            indexOffset++;
+                        }
+                        i += rayosExtrasMasUno - 1;
+                    }
+                    if (i == 0) destinosDeRayos[0].angulo += Mathf.PI * 2f;
+                }
+            }
+            destinosDeRayos.Sort();*/
+
             for (int i = 0; i < destinosDeRayos.Count - 1; i++)
             {
-                hacesDeLuz.Add(new HazDeLuz(filtro,destinosDeRayos[i], destinosDeRayos[i + 1]));
+                hacesDeLuz.Add(new HazDeLuz(filtro,destinosDeRayos[i], destinosDeRayos[i + 1], radio));
             }
         }
     }
