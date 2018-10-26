@@ -6,6 +6,9 @@ using UnityEditor;
 #endif
 
 [RequireComponent(typeof(CircleCollider2D))]
+//[RequireComponent(typeof(MeshFilter))]
+//[RequireComponent(typeof(MeshRenderer))]
+[ExecuteInEditMode]
 public class Luz2D : MonoBehaviour
 {
     static ContactFilter2D filtroVacio=new ContactFilter2D();
@@ -17,21 +20,29 @@ public class Luz2D : MonoBehaviour
 
     public ContactFilter2D filtro;
     public float radio = 5f;
-
-    //List<Collider2D> colliders = new List<Collider2D>();
+    public Color color = Color.white;
+    public Material material;
+     
     Collider2D[] collidersTocados = new Collider2D[500];
     int cantColliders = 0;
 
     new CircleCollider2D collider;
     CircleCollider2D Collider
+    { get { return collider ? collider : collider = GetComponent<CircleCollider2D>(); } }
+    /*MeshFilter meshFilter;
+    MeshFilter MeshFilter
+    { get { return meshFilter ? meshFilter : meshFilter = GetComponent<MeshFilter>(); } }
+    MeshRenderer meshRenderer;
+    MeshRenderer MeshRenderer
+    { get { return meshRenderer ? meshRenderer : meshRenderer = GetComponent<MeshRenderer>(); } }*/
+    Mesh mesh;
+
+    private void Update()
     {
-        get
+        GenerarMalla();
+        if (mesh)
         {
-            if (!collider)
-            {
-                collider = GetComponent<CircleCollider2D>();
-            }
-            return collider;
+            Graphics.DrawMesh(mesh, Matrix4x4.identity, material, gameObject.layer);
         }
     }
     private void OnValidate()
@@ -89,10 +100,10 @@ public class Luz2D : MonoBehaviour
                 circulo.OnDrawGizmos();
             }
         }
-        foreach(var haz in hacesDeLuz)
-        {
-            haz.Gizmo(radio);
-        }
+            foreach (var haz in hacesDeLuz)
+            {
+                haz.Gizmo(radio, mesh==null || !enabled);
+            }
     }
 #endif
 
@@ -117,13 +128,13 @@ public class Luz2D : MonoBehaviour
         public float DistanciaCercana
         { get { return rayoInterrumpido ? hits[0].distance : distancia; } }
 
-        public VectorDeLuz(CirculoVertice referencia, Vector2 desde, float radio = 0f)
+        public VectorDeLuz(CirculoVertice referencia, Vector2 desde, ContactFilter2D filtro, float radio = 0f)
         {
             origen = desde;
             puntoDestino = referencia.pos;
             colliderPadre = referencia.padre;
             puntoDestinoRelativo = puntoDestino - origen;
-            distancia = puntoDestinoRelativo.magnitude - referencia.radio;
+            distancia = puntoDestinoRelativo.magnitude;
             distanciaSq = distancia * distancia;
             angulo = Mathf.Atan2(puntoDestinoRelativo.y, puntoDestinoRelativo.x);
             rayo = new Ray2D(origen, puntoDestinoRelativo.normalized);
@@ -140,13 +151,10 @@ public class Luz2D : MonoBehaviour
                 horizonteAlfa = new VectorDeLuz(this, -offsetPerp, -offsetParal);
                 horizonteBeta = new VectorDeLuz(this, offsetPerp, -offsetParal);
 
-                puntoDestino = rayo.GetPoint(distancia);
-                puntoDestinoRelativo = puntoDestino - origen;
-
-                horizonteAlfa.CalcularRayo(radio);
-                horizonteBeta.CalcularRayo(radio);
+                horizonteAlfa.CalcularRayo(filtro, radio);
+                horizonteBeta.CalcularRayo(filtro, radio);
             }
-            CalcularRayo(radio);
+            CalcularRayo(filtro,radio);
         }
         public VectorDeLuz(VectorDeLuz original, Vector2 offsetPerp, Vector2 offsetParal)
         {
@@ -161,9 +169,9 @@ public class Luz2D : MonoBehaviour
             distanciaSq = distancia * distancia;
         }
 
-        public void CalcularRayo(float radio)
+        public void CalcularRayo(ContactFilter2D filtro, float radio=0)
         {
-            cantHits = Physics2D.Raycast(rayo.origin, /*puntoDestinoRelativo*/rayo.direction, filtroVacio, hits, radio);      
+            cantHits = Physics2D.Raycast(rayo.origin, rayo.direction, filtro, hits, radio);      
             if (cantHits > 0)
             {
                 if (hits[0].distance < distancia * epsilonMayor)
@@ -179,6 +187,8 @@ public class Luz2D : MonoBehaviour
                         {//vertice clave igual es como un coso grueso y en realidad interrumpe (osea estamos dentro)
                             rayoInterrumpido = true;
                             cantHits = 1;
+                            //por razones, como se la estamos dando de lleno a un vertice vamos a chamuyar la normal
+                            hits[0].normal = -rayo.direction;
                         }
                         else
                         {
@@ -193,13 +203,7 @@ public class Luz2D : MonoBehaviour
                                 hits[0].normal = -rayo.direction;
                             }
                         }
-                    }/*
-                    else
-                    {
-                        hits[0].point = rayo.GetPoint(radio);
-                        hits[0].distance = radio;
-                        hits[0].normal = -rayo.direction;
-                    }*/
+                    }
                 }
             }
             else
@@ -227,6 +231,14 @@ public class Luz2D : MonoBehaviour
 
     class HazDeLuz
     {
+        public Vector3 ConReloj
+        { get { return conRelojCerca ? conReloj.PuntoCercano : conReloj.PuntoLejano; } }
+        public Vector3 ContraReloj
+        { get { return contraRelojCerca ? contraReloj.PuntoCercano : contraReloj.PuntoLejano; } }
+        public bool TieneInterseccion { get { return conInterseccion; } }
+        public Vector3 Interseccion { get { return puntoInterseccion; } }
+
+
         bool hover;
 
         Vector3 origen;
@@ -240,7 +252,7 @@ public class Luz2D : MonoBehaviour
 
         bool conRelojCerca, contraRelojCerca, conInterseccion;
         float radioFrente, radioCentro;
-        public HazDeLuz(VectorDeLuz conReloj, VectorDeLuz contraReloj)
+        public HazDeLuz(ContactFilter2D filtro, VectorDeLuz conReloj, VectorDeLuz contraReloj)
         {
             this.conReloj = conReloj;
             this.contraReloj = contraReloj;
@@ -249,45 +261,48 @@ public class Luz2D : MonoBehaviour
             hover = GuazuExtender.PuntoEnTriangulo(conReloj.puntoDestino, contraReloj.puntoDestino, origen,
                 HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));
 
-            EstablecerForma();
+            EstablecerForma(filtro);
         }
 
-        void EstablecerForma()
+        void EstablecerForma(ContactFilter2D filtro)
         {
             contraRelojCerca = contraReloj.rayoInterrumpido;
             conRelojCerca = conReloj.rayoInterrumpido;
 
             if (conReloj.rayoInterrumpido && contraReloj.rayoInterrumpido)
             {//ambos chocaron con algo antes de alcanzar final
-                if (conReloj.hits[0].normal != contraReloj.hits[0].normal && !conReloj.toqueVerticeClave && !contraReloj.toqueVerticeClave)
-                {//Nos fijamos si NO son paralelos, porque en ese caso buscamos donde se cruzan para hacer bien la forma. Y si chocamos con algun vertice clave, entonces estamos jugados porque nos sabemos la 'normal' asique no chequeamos de esta manera
+                if (conReloj.hits[0].normal != contraReloj.hits[0].normal)
+                {//Nos fijamos si NO son paralelos, porque en ese caso buscamos donde se cruzan para hacer bien la forma. Y si chocamos con algun vertice clave la normal la chamuyamos
                     conInterseccion = true;
+                    var contraPerp = Vector2.Perpendicular(contraReloj.hits[0].normal);
+                    var conPerp = Vector2.Perpendicular(conReloj.hits[0].normal);
+                    if (contraReloj.toqueVerticeClave) contraPerp = (conReloj.PuntoLejano - contraReloj.PuntoCercano);
+                    if (conReloj.toqueVerticeClave) conPerp = (contraReloj.PuntoLejano - conReloj.PuntoCercano);
                     //la interseccion es el punto donde se cruzan las tangentes (perpendicular a las normales) de los Hits
-                    if (!GuazuExtender.LineIntersection(
-                        contraReloj.PuntoCercano,
-                        contraReloj.PuntoCercano+Vector2.Perpendicular(contraReloj.hits[0].normal),
-                        conReloj.PuntoCercano,
-                        conReloj.PuntoCercano+Vector2.Perpendicular(conReloj.hits[0].normal),
-                        ref puntoInterseccion))
-                        puntoInterseccion = (conReloj.PuntoCercano + contraReloj.PuntoCercano) / 2f;
-                    //Y sino entonces es el punto medio entre ambos hits y ya
+                    if (GuazuExtender.LineIntersection(contraReloj.PuntoCercano, contraReloj.PuntoCercano + contraPerp, conReloj.PuntoCercano, conReloj.PuntoCercano+conPerp, ref puntoInterseccion))
+                    {//y ahora chequeamos que el punto este dentro del haz, porque... eso significa que la superficie es circular o algo asi y esto no sirve
+                        if (!GuazuExtender.PuntoEnConoInfinito(origen, contraReloj.rayo.GetPoint(1), conReloj.rayo.GetPoint(1), puntoInterseccion))
+                        {
+                            conInterseccion = false;
+                        }
+                    }//Y sino entonces es el punto medio entre ambos hits y ya
+                    else conInterseccion = false;                    
 
                     if (hover)
                     {
                         Handles.color = (Color.magenta + Color.red) * .5f;
-                        Handles.DrawDottedLine(contraReloj.PuntoCercano - Vector2.Perpendicular(contraReloj.hits[0].normal), contraReloj.PuntoCercano + Vector2.Perpendicular(contraReloj.hits[0].normal), HandleUtility.GetHandleSize(contraReloj.PuntoCercano) * 5f);
-                        Handles.DrawDottedLine(conReloj.PuntoCercano - Vector2.Perpendicular(conReloj.hits[0].normal), conReloj.PuntoCercano + Vector2.Perpendicular(conReloj.hits[0].normal), HandleUtility.GetHandleSize(conReloj.PuntoCercano) * 5f);
+                        Handles.DrawDottedLine(contraReloj.PuntoCercano - contraPerp.normalized, contraReloj.PuntoCercano + contraPerp.normalized, HandleUtility.GetHandleSize(contraReloj.PuntoCercano) * 5f);
+                        Handles.DrawDottedLine(conReloj.PuntoCercano - conPerp.normalized, conReloj.PuntoCercano + conPerp.normalized, HandleUtility.GetHandleSize(conReloj.PuntoCercano) * 5f);
                         Handles.DrawWireDisc(puntoInterseccion, Vector3.forward, HandleUtility.GetHandleSize(puntoInterseccion) * .1f);
                     }
 
                 }
             }
             else
-            //if (!conReloj.rayoInterrumpido || !contraReloj.rayoInterrumpido)
             {
                 puntoInterseccion = (conReloj.PuntoCercano + contraReloj.PuntoCercano) / 2f;
                 Collider2D[] overlappedColliders = new Collider2D[1];
-                cantHits = Physics2D.OverlapCircle(puntoInterseccion, epsilonMenor, filtroVacio, overlappedColliders);
+                cantHits = Physics2D.OverlapCircle(puntoInterseccion, epsilonMenor, filtro, overlappedColliders);
                 if (cantHits > 0)//aca basicamente estamos comprobando si el eje esta adelante o no, rayos rozantes, de un mismo eje
                 {
                     contraRelojCerca = conRelojCerca = true;
@@ -298,12 +313,12 @@ public class Luz2D : MonoBehaviour
                     if (GuazuExtender.LineIntersection(contraReloj.PuntoCercano, conReloj.puntoHit, contraReloj.puntoHit, conReloj.PuntoCercano, ref puntoInterseccion))
                     {//buscamos interseccion en el centro del trapecio
                         //pero chequeamos por cada eje si el haz es corto o largo
-                        cantHits = Physics2D.OverlapCircle((puntoInterseccion + contraReloj.PuntoCercano) / 2f, epsilonMenor, filtroVacio, overlappedColliders);
+                        cantHits = Physics2D.OverlapCircle((puntoInterseccion + contraReloj.PuntoCercano) / 2f, epsilonMenor, filtro, overlappedColliders);
                         if (cantHits > 0)
                         {
                             contraRelojCerca = true;
                         }
-                        cantHits = Physics2D.OverlapCircle((puntoInterseccion + conReloj.PuntoCercano) / 2f, .001f, filtroVacio, overlappedColliders);
+                        cantHits = Physics2D.OverlapCircle((puntoInterseccion + conReloj.PuntoCercano) / 2f, .001f, filtro, overlappedColliders);
                         if (cantHits > 0)
                         {
                             conRelojCerca = true;
@@ -317,14 +332,48 @@ public class Luz2D : MonoBehaviour
                     }
                 }
                 else
-                {//en este caso hay un rayo que roza y sigue pero el otro rayo es interrumpido
-                    //no hay trapecio loco, sino triangulo, (necesitaremos trapecio loco)
-
+                {//en este caso hay un rayo que roza y sigue pero el otro rayo es interrumpido, ademas ya sabemos que no chocaron por delante, 
+                    if (contraReloj.hits[0].normal != conReloj.hits[0].normal)
+                    {//si las normales son diferentes, entonces
+                        //hacemos lo mismo que si fuesen dos rayos interrumpidos, pero el que roza tomamos el choque de mas alla del vertice clave (que igual esta seteado como hits[0]) asique lo mismo pero en vez de usar punto cercano es hits[0] segurin
+                        conInterseccion = true;
+                        bool chequearCono = true;
+                        var contraPerp = Vector2.Perpendicular(contraReloj.hits[0].normal);
+                        var conPerp = Vector2.Perpendicular(conReloj.hits[0].normal);
+                        if (contraReloj.toqueVerticeClave && contraReloj.rayoInterrumpido)
+                        {
+                            contraPerp = contraReloj.rayo.direction;
+                            chequearCono = false;
+                        }
+                        if (conReloj.toqueVerticeClave && conReloj.rayoInterrumpido)
+                        {
+                            conPerp = conReloj.rayo.direction;
+                            chequearCono = false;
+                        }
+                        if (GuazuExtender.LineIntersection(contraReloj.hits[0].point, contraReloj.hits[0].point + contraPerp, conReloj.hits[0].point, conReloj.hits[0].point + conPerp, ref puntoInterseccion))
+                        {
+                            if (chequearCono)
+                            {//no se chequea el cono cuando pasa lo que mas arriba dice porque no, cosas
+                                if (!GuazuExtender.PuntoEnConoInfinito(origen, contraReloj.rayo.GetPoint(1), conReloj.rayo.GetPoint(1), puntoInterseccion))
+                                {
+                                    conInterseccion = false;
+                                }
+                            }
+                        }
+                        else conInterseccion = false;
+                        if (hover)
+                        {
+                            Handles.color = (Color.magenta + Color.red) * .5f;
+                            Handles.DrawDottedLine(contraReloj.hits[0].point - contraPerp.normalized, contraReloj.hits[0].point + contraPerp.normalized, HandleUtility.GetHandleSize(contraReloj.hits[0].point) * 5f);
+                            Handles.DrawDottedLine(conReloj.hits[0].point - conPerp.normalized, conReloj.hits[0].point + conPerp.normalized, HandleUtility.GetHandleSize(conReloj.hits[0].point) * 5f);
+                            Handles.DrawWireDisc(puntoInterseccion, Vector3.forward, HandleUtility.GetHandleSize(puntoInterseccion) * .1f);
+                        }
+                    }
                 }
             }
         }
 
-        public void Gizmo(float radio)
+        public void Gizmo(float radio, bool dibujarDibujo = true)
         {
             if (hover)
             {
@@ -337,11 +386,14 @@ public class Luz2D : MonoBehaviour
             }
             Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.white, .4f);
 
-            if (conInterseccion)
+            if (dibujarDibujo)
             {
-                Handles.DrawAAConvexPolygon(contraRelojCerca ? contraReloj.PuntoCercano : contraReloj.PuntoLejano, puntoInterseccion, conRelojCerca ? conReloj.PuntoCercano : conReloj.PuntoLejano, origen);
+                if (conInterseccion)
+                {
+                    Handles.DrawAAConvexPolygon(contraRelojCerca ? contraReloj.PuntoCercano : contraReloj.PuntoLejano, puntoInterseccion, conRelojCerca ? conReloj.PuntoCercano : conReloj.PuntoLejano, origen);
+                }
+                else Handles.DrawAAConvexPolygon(contraRelojCerca ? contraReloj.PuntoCercano : contraReloj.PuntoLejano, conRelojCerca ? conReloj.PuntoCercano : conReloj.PuntoLejano, origen);
             }
-            else Handles.DrawAAConvexPolygon(contraRelojCerca ? contraReloj.PuntoCercano : contraReloj.PuntoLejano, conRelojCerca ? conReloj.PuntoCercano : conReloj.PuntoLejano, origen);
 
             if(hover){
                 Handles.color = Color.yellow;
@@ -372,7 +424,7 @@ public class Luz2D : MonoBehaviour
         {
             foreach (var circulo in circulos)
             {
-                destinosDeRayos.Add(new VectorDeLuz(circulo, transform.position, radio));
+                destinosDeRayos.Add(new VectorDeLuz(circulo, transform.position,filtro, radio));
                 if (circulo.radio > 0f)
                 {
                     destinosDeRayos.Add(destinosDeRayos[destinosDeRayos.Count - 1].horizonteAlfa);
@@ -386,9 +438,49 @@ public class Luz2D : MonoBehaviour
             destinosDeRayos.Add(destinosDeRayos[0]);
             for (int i = 0; i < destinosDeRayos.Count - 1; i++)
             {
-                hacesDeLuz.Add(new HazDeLuz(destinosDeRayos[i], destinosDeRayos[i + 1]));
+                hacesDeLuz.Add(new HazDeLuz(filtro,destinosDeRayos[i], destinosDeRayos[i + 1]));
             }
         }
+    }
+    
+    void GenerarMalla()
+    {
+        if (hacesDeLuz.Count == 0) return;
+        if (!mesh)
+        {
+            mesh = new Mesh();
+        mesh.MarkDynamic();
+        }
+
+        List<Vector3> vertices = new List<Vector3>();
+        List<Color> colores = new List<Color>();
+        List<int> tris = new List<int>();
+        vertices.Add( transform.position );
+        colores.Add(color);
+        foreach (var haz in hacesDeLuz)
+        {
+            vertices.Add(haz.ContraReloj);
+            colores.Add(color);
+            if (haz.TieneInterseccion)
+            {
+                vertices.Add(haz.Interseccion);
+                colores.Add(color);
+                tris.Add(vertices.Count - 1);
+                tris.Add(0);
+                tris.Add(vertices.Count - 2);
+            }
+            vertices.Add(haz.ConReloj);
+            colores.Add(color);
+            tris.Add(vertices.Count - 1);
+            tris.Add(0);
+            tris.Add(vertices.Count - 2);
+        }
+
+        mesh.Clear();
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(tris,0);
+        mesh.SetColors(colores);
+        mesh.RecalculateBounds();
     }
 
     void ColectarColliders()

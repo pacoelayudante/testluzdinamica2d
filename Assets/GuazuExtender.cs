@@ -24,12 +24,12 @@ public static class GuazuExtender {
         return true;
     }
 
-    public static bool PuntoEnTriangulo(Vector2 triA, Vector2 triB, Vector2 triC, Vector2 p)
+    public static bool PuntoEnTriangulo(Vector2 triA, Vector2 triB, Vector2 triC, Vector2 pt)
     {
         // Compute vectors        
         var v0 = triC - triA;
         var v1 = triB - triA;
-        var v2 = p - triA;
+        var v2 = pt - triA;
 
         // Compute dot products
         var dot00 = Vector2.Dot(v0, v0);
@@ -45,5 +45,14 @@ public static class GuazuExtender {
 
         // Check if point is in triangle
         return (u >= 0) && (v >= 0) && (u + v < 1);
+    }
+
+    public static float QueLadoDeLaLinea(Vector2 lineaA, Vector2 lineaB, Vector2 punto)
+    {
+        return (lineaB.x - lineaA.x) * (punto.y - lineaA.y) - (lineaB.y - lineaA.y) * (punto.x - lineaA.x);
+    }
+    public static bool PuntoEnConoInfinito(Vector2 centroCono, Vector2 conoContraReloj, Vector2 conoConReloj, Vector2 punto)
+    {
+        return QueLadoDeLaLinea(centroCono, conoContraReloj, punto) < 0f && QueLadoDeLaLinea(centroCono, conoConReloj, punto) > 0f;
     }
 }
