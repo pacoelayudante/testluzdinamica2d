@@ -279,7 +279,7 @@ public class Luz2D : MonoBehaviour
 
             if (conReloj.rayoInterrumpido && contraReloj.rayoInterrumpido)
             {//ambos chocaron con algo antes de alcanzar final
-                if (conReloj.hits[0].normal != contraReloj.hits[0].normal)
+                if (conReloj.hits[0].normal != contraReloj.hits[0].normal || conReloj.toqueVerticeClave || contraReloj.toqueVerticeClave)
                 {//Nos fijamos si NO son paralelos, porque en ese caso buscamos donde se cruzan para hacer bien la forma. Y si chocamos con algun vertice clave la normal la chamuyamos
                     conInterseccion = true;
                     var contraPerp = Vector2.Perpendicular(contraReloj.hits[0].normal);
@@ -341,7 +341,7 @@ public class Luz2D : MonoBehaviour
                 }
                 else
                 {//en este caso hay un rayo que roza y sigue pero el otro rayo es interrumpido, ademas ya sabemos que no chocaron por delante, 
-                    if (contraReloj.hits[0].normal != conReloj.hits[0].normal)
+                    if (contraReloj.hits[0].normal != conReloj.hits[0].normal || (contraReloj.toqueVerticeClave && contraReloj.rayoInterrumpido) || (conReloj.toqueVerticeClave && conReloj.rayoInterrumpido))
                     {//si las normales son diferentes, entonces
                         //hacemos lo mismo que si fuesen dos rayos interrumpidos, pero el que roza tomamos el choque de mas alla del vertice clave (que igual esta seteado como hits[0]) asique lo mismo pero en vez de usar punto cercano es hits[0] segurin
                         conInterseccion = true;
@@ -448,9 +448,9 @@ public class Luz2D : MonoBehaviour
         if (destinosDeRayos.Count > 0)
         {
             destinosDeRayos.Sort();
-            destinosDeRayos.Add(new VectorDeLuz(destinosDeRayos[0].angulo + Mathf.PI*2f, transform.position, filtro, radio));
-            //destinosDeRayos.Add(destinosDeRayos[0]);
-            /*if (maximaAperturaHaz > 0f)
+            //destinosDeRayos.Add(new VectorDeLuz(destinosDeRayos[0].angulo + Mathf.PI*2f, transform.position, filtro, radio));
+            destinosDeRayos.Add(destinosDeRayos[0]);
+            if (maximaAperturaHaz > 0f)
             {
                 float diferenciaAngular = 0f;
                 var maximaAperturaHazRadianes = maximaAperturaHaz * Mathf.Deg2Rad;
@@ -459,20 +459,20 @@ public class Luz2D : MonoBehaviour
                     diferenciaAngular = destinosDeRayos[i + 1].angulo - destinosDeRayos[i].angulo;
                     if (diferenciaAngular > maximaAperturaHazRadianes)
                     {
-                        var rayosExtrasMasUno = Mathf.FloorToInt(diferenciaAngular / maximaAperturaHazRadianes) + 1;
-                        var distEntreRayos = diferenciaAngular / rayosExtrasMasUno;
-                        int indexOffset = 1;
-                        for (float r = 0f; r < rayosExtrasMasUno; r++)
+                        var rayosExtras = Mathf.FloorToInt(diferenciaAngular / maximaAperturaHazRadianes);
+                        var distEntreRayos = diferenciaAngular / (rayosExtras+1);
+                        int indexOffset = 0;
+                        for (int r = 0; r < rayosExtras; r++)
                         {
-                            destinosDeRayos.Insert(0, new VectorDeLuz(destinosDeRayos[i].angulo + distEntreRayos * r, transform.position, filtro, radio));
                             indexOffset++;
+                            destinosDeRayos.Insert(i+indexOffset, new VectorDeLuz(destinosDeRayos[i].angulo + distEntreRayos * indexOffset, transform.position, filtro, radio));
                         }
-                        i += rayosExtrasMasUno - 1;
+                        if (i == 0) destinosDeRayos[0].angulo += Mathf.PI * 2f;
+                        i += indexOffset;
                     }
-                    if (i == 0) destinosDeRayos[0].angulo += Mathf.PI * 2f;
+                    else if (i == 0) destinosDeRayos[0].angulo += Mathf.PI * 2f;
                 }
             }
-            destinosDeRayos.Sort();*/
 
             for (int i = 0; i < destinosDeRayos.Count - 1; i++)
             {
