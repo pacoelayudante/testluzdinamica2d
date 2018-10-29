@@ -18,9 +18,15 @@ public class Luz2D : MonoBehaviour
     List<HazDeLuz> hacesDeLuz = new List<HazDeLuz>();
 
     public ContactFilter2D filtro;
-    public float radio = 5f;
+    [SerializeField]
+    float radio = 5f;
+    [Range(0f,180f)]
+    [SerializeField]
+    float aperturaDeAngulo = 180f;
     public Color color = Color.white;
-    public float maximaAperturaHaz = 45f;
+    [Range(1f,120f)]
+    [SerializeField]
+    float maximaAperturaHaz = 45f;
     public Material material;
      
     Collider2D[] collidersTocados = new Collider2D[500];
@@ -33,6 +39,7 @@ public class Luz2D : MonoBehaviour
 
     private void Update()
     {
+        ConstruirHacesDeLuz();
         GenerarMalla();
         if (mesh)
         {
@@ -48,6 +55,7 @@ public class Luz2D : MonoBehaviour
         Collider.radius = radio;
         Collider.offset = Vector2.zero;
         if (maximaAperturaHaz < 0f) maximaAperturaHaz *= -1;
+        if (aperturaDeAngulo < 0f) aperturaDeAngulo = 0f;
     }
 
     class CirculoVertice
@@ -55,6 +63,12 @@ public class Luz2D : MonoBehaviour
         public Vector2 pos;
         public float radio;
         public Collider2D padre;
+        public Vector2 offset;
+        public void Actualizar()
+        {
+            offset = padre.transform.TransformPoint(offset);
+        }
+
         public Vector2 OffsetRayo(Vector2 desde, float signo)
         {
             if (radio == 0f) return Vector2.zero;
@@ -82,11 +96,18 @@ public class Luz2D : MonoBehaviour
     private void OnDrawGizmos()
     {
         Handles.color = Gizmos.color = Color.black;
-        Handles.DrawWireDisc(transform.position, Vector3.forward, radio);
+        Handles.DrawWireArc(transform.position, Vector3.forward, transform.TransformDirection(Mathf.Cos(-aperturaDeAngulo * Mathf.Deg2Rad), Mathf.Sin(-aperturaDeAngulo * Mathf.Deg2Rad),0f),aperturaDeAngulo*2f, radio);
+        if (aperturaDeAngulo < 180f)
+        {
+            Gizmos.DrawRay(transform.position, transform.TransformDirection(Mathf.Cos(-aperturaDeAngulo * Mathf.Deg2Rad), Mathf.Sin(-aperturaDeAngulo * Mathf.Deg2Rad), 0f) * radio);
+            Gizmos.DrawRay(transform.position, transform.TransformDirection(Mathf.Cos(aperturaDeAngulo * Mathf.Deg2Rad), Mathf.Sin(aperturaDeAngulo * Mathf.Deg2Rad), 0f) * radio);
+        }
         Gizmos.DrawSphere(transform.position, HandleUtility.GetHandleSize(transform.position) * .05f);
-        ColectarColliders();
-        ColectarCirculos();
-        ConstruirHacesDeLuz();
+        if (!EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode && Selection.Contains(gameObject))
+        {
+            ColectarColliders();
+            ColectarCirculos();
+        }
         Handles.color = Gizmos.color = Color.magenta*.75f;
         foreach (var circs in colliders.Values)
         {
@@ -104,8 +125,10 @@ public class Luz2D : MonoBehaviour
 
     class VectorDeLuz : System.IComparable<VectorDeLuz>
     {
+        public bool enRangoAngular = true;
         public bool rayoInterrumpido, toqueVerticeClave, esHorizonte;
         public float angulo;
+        public float anguloRelativo;
         public float distancia;
         public float distanciaSq;
         public Vector2 puntoDestino, origen, puntoHit;
@@ -123,15 +146,18 @@ public class Luz2D : MonoBehaviour
         public float DistanciaCercana
         { get { return rayoInterrumpido ? hits[0].distance : distancia; } }
 
-        public VectorDeLuz(CirculoVertice referencia, Vector2 desde, ContactFilter2D filtro, float radio = 0f)
+        public VectorDeLuz(CirculoVertice referencia, Vector2 desde, ContactFilter2D filtro, float radio = 0f, float umbralAngulo = 180f, Vector2 referenciaAngulo = new Vector2())
         {
+            Actualizar(referencia, desde, filtro, radio, umbralAngulo, referenciaAngulo);
+        }
+        public void Actualizar(CirculoVertice referencia, Vector2 desde, ContactFilter2D filtro, float radio = 0f, float umbralAngulo = 180f, Vector2 referenciaAngulo = new Vector2()) {
             origen = desde;
             puntoDestino = referencia.pos;
             colliderPadre = referencia.padre;
             puntoDestinoRelativo = puntoDestino - origen;
             distancia = puntoDestinoRelativo.magnitude;
             distanciaSq = distancia * distancia;
-            angulo = Mathf.Atan2(puntoDestinoRelativo.y, puntoDestinoRelativo.x);
+            anguloRelativo = angulo = Mathf.Atan2(-puntoDestinoRelativo.y, puntoDestinoRelativo.x);
             rayo = new Ray2D(origen, puntoDestinoRelativo.normalized);
 
             if (referencia.radio > 0f)
@@ -143,41 +169,66 @@ public class Luz2D : MonoBehaviour
                 Vector2 offsetPerp = Vector2.Perpendicular(puntoDestinoRelativo).normalized * h;
                 Vector2 offsetParal = (puntoDestinoRelativo).normalized * d_;
 
-                horizonteAlfa = new VectorDeLuz(this, -offsetPerp, -offsetParal);
-                horizonteBeta = new VectorDeLuz(this, offsetPerp, -offsetParal);
+                horizonteAlfa = new VectorDeLuz(this, -offsetPerp, -offsetParal,umbralAngulo,referenciaAngulo);
+                horizonteBeta = new VectorDeLuz(this, offsetPerp, -offsetParal, umbralAngulo, referenciaAngulo);
 
                 horizonteAlfa.CalcularRayo(filtro, radio);
                 horizonteBeta.CalcularRayo(filtro, radio);
             }
+            if (umbralAngulo < 180f)
+            {
+                anguloRelativo = Vector2.SignedAngle(puntoDestinoRelativo, referenciaAngulo);
+                enRangoAngular = anguloRelativo < umbralAngulo && anguloRelativo > -umbralAngulo;
+                anguloRelativo *= Mathf.Deg2Rad;
+            }
+            else enRangoAngular = true;
             CalcularRayo(filtro,radio);
         }
-        public VectorDeLuz(VectorDeLuz original, Vector2 offsetPerp, Vector2 offsetParal)
+        public VectorDeLuz(VectorDeLuz original, Vector2 offsetPerp, Vector2 offsetParal, float umbralAngulo = 180f, Vector2 referenciaAngulo = new Vector2())
         {
+            Actualizar(original, offsetPerp, offsetParal, umbralAngulo, referenciaAngulo);
+        }
+        public void Actualizar(VectorDeLuz original, Vector2 offsetPerp, Vector2 offsetParal, float umbralAngulo = 180f, Vector2 referenciaAngulo = new Vector2()) {
             esHorizonte = true;
             origen = original.origen;
             colliderPadre = original.colliderPadre;
             puntoDestino = original.puntoDestino + offsetPerp + offsetParal;
             puntoDestinoRelativo = original.puntoDestinoRelativo + offsetPerp + offsetParal;
             rayo = new Ray2D(origen, puntoDestinoRelativo.normalized);
-            angulo = Mathf.Atan2(puntoDestinoRelativo.y, puntoDestinoRelativo.x);
+            anguloRelativo = angulo = Mathf.Atan2(-puntoDestinoRelativo.y, puntoDestinoRelativo.x);
             distancia = puntoDestinoRelativo.magnitude;
             distanciaSq = distancia * distancia;
+            if (umbralAngulo < 180f)
+            {
+                anguloRelativo = Vector2.SignedAngle(puntoDestinoRelativo, referenciaAngulo);
+                enRangoAngular = anguloRelativo < umbralAngulo && anguloRelativo > -umbralAngulo;
+                anguloRelativo *= Mathf.Deg2Rad;
+            }
+            else enRangoAngular = true;
         }
-        public VectorDeLuz(float anguloRadianes, Vector2 desde, ContactFilter2D filtro, float radio = 0f)
+        public VectorDeLuz(float anguloRadianes, Vector2 desde, ContactFilter2D filtro, float radio = 0f, float umbralAngulo = 180f, Vector2 referenciaAngulo = new Vector2())
         {
-            this.angulo = anguloRadianes;
+            Actualizar(anguloRadianes, desde, filtro, radio, umbralAngulo , referenciaAngulo );
+        }
+        public void Actualizar(float anguloRadianes, Vector2 desde, ContactFilter2D filtro, float radio = 0f, float umbralAngulo = 180f, Vector2 referenciaAngulo = new Vector2()) {
+            anguloRelativo = this.angulo = anguloRadianes;
             origen = desde;
-            rayo = new Ray2D(origen, new Vector2(Mathf.Cos(anguloRadianes),Mathf.Sin(anguloRadianes)));
+            rayo = new Ray2D(origen, new Vector2(Mathf.Cos(anguloRadianes),-Mathf.Sin(anguloRadianes)));
             distancia = radio*1.1f;
             puntoDestino = rayo.GetPoint(distancia);
             puntoDestinoRelativo = rayo.direction * distancia;
             distanciaSq = distancia * distancia;
-
+            if (umbralAngulo < 180f)
+            {
+                anguloRelativo = Vector2.SignedAngle(puntoDestinoRelativo, referenciaAngulo)* Mathf.Deg2Rad;
+            }
+            else enRangoAngular = true;
             CalcularRayo(filtro, radio);
         }
 
         public void CalcularRayo(ContactFilter2D filtro, float radio=0)
         {
+            if (!enRangoAngular) return;
             cantHits = Physics2D.Raycast(rayo.origin, rayo.direction, filtro, hits, radio);      
             if (cantHits > 0)
             {
@@ -233,7 +284,7 @@ public class Luz2D : MonoBehaviour
         }
         public int CompareTo(VectorDeLuz otro)
         {
-            return angulo.CompareTo(otro.angulo);
+            return anguloRelativo.CompareTo(otro.anguloRelativo);
         }
     }
 
@@ -265,9 +316,6 @@ public class Luz2D : MonoBehaviour
             this.conReloj = conReloj;
             this.contraReloj = contraReloj;
             origen = conReloj.origen;
-
-            hover = GuazuExtender.PuntoEnTriangulo(conReloj.puntoDestino, contraReloj.puntoDestino, origen,
-                HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));
 
             EstablecerForma(filtro);
         }
@@ -388,6 +436,7 @@ public class Luz2D : MonoBehaviour
 
         public void Gizmo(bool dibujarDibujo = true)
         {
+            hover = GuazuExtender.PuntoEnTriangulo(conReloj.puntoDestino, contraReloj.puntoDestino, origen, HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));
             if (hover)
             {
                 Gizmos.color = conReloj.rayoInterrumpido ? Color.red : Color.blue;
@@ -433,30 +482,49 @@ public class Luz2D : MonoBehaviour
     {
         hacesDeLuz.Clear();
         destinosDeRayos.Clear();
+        var referenciaAngular = 0f;
+        if (aperturaDeAngulo < 180f) referenciaAngular = -Vector2.SignedAngle(Vector2.right,transform.right);
         foreach (var circulos in colliders.Values)
         {
             foreach (var circulo in circulos)
             {
-                destinosDeRayos.Add(new VectorDeLuz(circulo, transform.position,filtro, radio));
+                var vectorNuevo = new VectorDeLuz(circulo, transform.position, filtro, radio, aperturaDeAngulo, transform.right);
+                if(vectorNuevo.enRangoAngular)destinosDeRayos.Add(vectorNuevo);
                 if (circulo.radio > 0f)
                 {
-                    destinosDeRayos.Add(destinosDeRayos[destinosDeRayos.Count - 1].horizonteAlfa);
-                    destinosDeRayos.Add(destinosDeRayos[destinosDeRayos.Count - 2].horizonteBeta);
+                    if (vectorNuevo.horizonteAlfa.enRangoAngular) destinosDeRayos.Add(vectorNuevo.horizonteAlfa);
+                    if (vectorNuevo.horizonteBeta.enRangoAngular) destinosDeRayos.Add(vectorNuevo.horizonteBeta);
                 }
             }
         }
-        if (destinosDeRayos.Count > 0)
+        //if (destinosDeRayos.Count > 0)
         {
             destinosDeRayos.Sort();
-            //destinosDeRayos.Add(new VectorDeLuz(destinosDeRayos[0].angulo + Mathf.PI*2f, transform.position, filtro, radio));
-            destinosDeRayos.Add(destinosDeRayos[0]);
+            if (aperturaDeAngulo >= 180f)
+            {
+                if(destinosDeRayos.Count == 0) 
+                {
+                    referenciaAngular = -Vector2.SignedAngle(Vector2.right, transform.right)*Mathf.Deg2Rad;
+                    destinosDeRayos.Add(new VectorDeLuz(referenciaAngular, transform.position, filtro, radio, aperturaDeAngulo, transform.right));
+                    destinosDeRayos.Add(new VectorDeLuz(referenciaAngular+Mathf.PI*2f/3f, transform.position, filtro, radio, aperturaDeAngulo, transform.right));
+                    destinosDeRayos.Add(new VectorDeLuz(referenciaAngular+Mathf.PI * 4f / 3f, transform.position, filtro, radio, aperturaDeAngulo, transform.right));
+                }
+                destinosDeRayos.Add(destinosDeRayos[0]);
+            }
+            else
+            {
+                destinosDeRayos.Add(new VectorDeLuz((referenciaAngular + aperturaDeAngulo) * Mathf.Deg2Rad, transform.position, filtro, radio, aperturaDeAngulo, transform.right));
+                destinosDeRayos.Insert(0, new VectorDeLuz((referenciaAngular - aperturaDeAngulo) * Mathf.Deg2Rad, transform.position, filtro, radio, aperturaDeAngulo, transform.right));
+                if (destinosDeRayos.Count == 2) destinosDeRayos.Insert(1, new VectorDeLuz(referenciaAngular* Mathf.Deg2Rad, transform.position, filtro, radio, aperturaDeAngulo, transform.right));
+            }
             if (maximaAperturaHaz > 0f)
             {
                 float diferenciaAngular = 0f;
+                var offsetAngular = (Vector2.Angle(transform.right,Vector2.right)%(maximaAperturaHaz)-maximaAperturaHaz/2f) * Mathf.Deg2Rad;
                 var maximaAperturaHazRadianes = maximaAperturaHaz * Mathf.Deg2Rad;
                 for (int i = 0; i < destinosDeRayos.Count - 1; i++)
                 {//aca chequeamos que los rayos de luz no tengan mucha diferencia angular entre si (para que el resultado no sea tan cuadrado en caso de pocos colliders en alguna region y un re fix cuando no hay al menos dos en cuadrantes opuestos
-                    diferenciaAngular = destinosDeRayos[i + 1].angulo - destinosDeRayos[i].angulo;
+                    diferenciaAngular = destinosDeRayos[i + 1].anguloRelativo - destinosDeRayos[i].anguloRelativo;
                     if (diferenciaAngular > maximaAperturaHazRadianes)
                     {
                         var rayosExtras = Mathf.FloorToInt(diferenciaAngular / maximaAperturaHazRadianes);
@@ -465,12 +533,12 @@ public class Luz2D : MonoBehaviour
                         for (int r = 0; r < rayosExtras; r++)
                         {
                             indexOffset++;
-                            destinosDeRayos.Insert(i+indexOffset, new VectorDeLuz(destinosDeRayos[i].angulo + distEntreRayos * indexOffset, transform.position, filtro, radio));
+                            destinosDeRayos.Insert(i+indexOffset, new VectorDeLuz(destinosDeRayos[i].angulo + distEntreRayos * indexOffset+ offsetAngular, transform.position, filtro, radio));
                         }
-                        if (i == 0) destinosDeRayos[0].angulo += Mathf.PI * 2f;
+                        if (i == 0) destinosDeRayos[0].anguloRelativo += Mathf.PI * 2f;
                         i += indexOffset;
                     }
-                    else if (i == 0) destinosDeRayos[0].angulo += Mathf.PI * 2f;
+                    else if (i == 0) destinosDeRayos[0].anguloRelativo += Mathf.PI * 2f;
                 }
             }
 
