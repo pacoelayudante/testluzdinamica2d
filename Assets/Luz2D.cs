@@ -60,33 +60,43 @@ public class Luz2D : MonoBehaviour
 
     class CirculoVertice
     {
-        public Vector2 pos;
+        public Vector2 Pos
+        {
+            get
+            {
+                return actualizador(puntoReferencia, padre);
+            }
+        }
+        public Vector2 puntoReferencia;
         public float radio;
         public Collider2D padre;
-        public Vector2 offset;
-        public void Actualizar()
+        public System.Func<Vector2,Collider2D, Vector2> actualizador;
+        public CirculoVertice()
         {
-            offset = padre.transform.TransformPoint(offset);
+            if(actualizador==null)actualizador = ActualizadorDefault;
         }
-
-        public Vector2 OffsetRayo(Vector2 desde, float signo)
+        Vector2 ActualizadorDefault(Vector2 p, Collider2D col)
+        {
+            return Vector2.zero;
+        }
+        /*public Vector2 OffsetRayo(Vector2 desde, float signo)
         {
             if (radio == 0f) return Vector2.zero;
             float d = (pos - desde).magnitude;
             float h = Mathf.Sqrt(d * d - radio * radio) * radio / d;
             float d_ = Mathf.Sqrt(radio * radio - h * h);
             return Vector2.Perpendicular(desde - pos).normalized * h * signo + (desde - pos).normalized * d_;
-        }
+        }*/
 #if UNITY_EDITOR
         public void OnDrawGizmos()
         {
             if (radio == 0f)
             {
-                Gizmos.DrawWireCube(pos, HandleUtility.GetHandleSize(pos) * .1f*Vector2.one);
+                Gizmos.DrawWireCube(Pos, HandleUtility.GetHandleSize(Pos) * .1f*Vector2.one);
             }
             else
             {
-                Handles.DrawWireDisc(pos, Vector3.forward, radio);
+                Handles.DrawWireDisc(Pos, Vector3.forward, radio);
             }
         }
 #endif
@@ -152,7 +162,7 @@ public class Luz2D : MonoBehaviour
         }
         public void Actualizar(CirculoVertice referencia, Vector2 desde, ContactFilter2D filtro, float radio = 0f, float umbralAngulo = 180f, Vector2 referenciaAngulo = new Vector2()) {
             origen = desde;
-            puntoDestino = referencia.pos;
+            puntoDestino = referencia.Pos;
             colliderPadre = referencia.padre;
             puntoDestinoRelativo = puntoDestino - origen;
             distancia = puntoDestinoRelativo.magnitude;
@@ -613,10 +623,16 @@ public class Luz2D : MonoBehaviour
         if (!coll.enabled) return;
         if (coll.usedByComposite) return;
         CirculoVertice[] vertices =new CirculoVertice[4];
-        vertices[0]=(new CirculoVertice() { pos = coll.transform.TransformPoint(coll.offset.x + coll.size.x / 2f, coll.offset.y + coll.size.y / 2f, 0f), radio = coll.edgeRadius, padre = coll });
-        vertices[1] = (new CirculoVertice() { pos = coll.transform.TransformPoint(coll.offset.x - coll.size.x / 2f, coll.offset.y + coll.size.y / 2f, 0f), radio = coll.edgeRadius, padre = coll });
-        vertices[2] = (new CirculoVertice() { pos = coll.transform.TransformPoint(coll.offset.x + coll.size.x / 2f, coll.offset.y - coll.size.y / 2f, 0f), radio = coll.edgeRadius, padre = coll });
-        vertices[3] = (new CirculoVertice() { pos = coll.transform.TransformPoint(coll.offset.x - coll.size.x / 2f, coll.offset.y - coll.size.y / 2f, 0f), radio = coll.edgeRadius, padre = coll });
+        vertices[0]=(new CirculoVertice() { actualizador=ActualizadorTransPointConOffset, puntoReferencia= coll.size/2f/*pos = coll.transform.TransformPoint(coll.offset.x + coll.size.x / 2f, coll.offset.y + coll.size.y / 2f, 0f)*/, radio = coll.edgeRadius, padre = coll });
+        vertices[1] = (new CirculoVertice() {
+            actualizador = ActualizadorTransPointConOffset,
+            puntoReferencia = new Vector2(-coll.size.x,coll.size.y)/2f/*pos = coll.transform.TransformPoint(coll.offset.x - coll.size.x / 2f, coll.offset.y + coll.size.y / 2f, 0f)*/, radio = coll.edgeRadius, padre = coll });
+        vertices[2] = (new CirculoVertice() {
+            actualizador = ActualizadorTransPointConOffset,
+            puntoReferencia = new Vector2(coll.size.x, -coll.size.y) / 2f/*pos = coll.transform.TransformPoint(coll.offset.x + coll.size.x / 2f, coll.offset.y - coll.size.y / 2f, 0f)*/, radio = coll.edgeRadius, padre = coll });
+        vertices[3] = (new CirculoVertice() {
+            actualizador = ActualizadorTransPointConOffset,
+            puntoReferencia = -coll.size / 2f/*pos = coll.transform.TransformPoint(coll.offset.x - coll.size.x / 2f, coll.offset.y - coll.size.y / 2f, 0f)*/, radio = coll.edgeRadius, padre = coll });
         colliders.Add(coll, vertices);
     }
     void GenerarCirculosCircle(CircleCollider2D coll)
@@ -624,7 +640,7 @@ public class Luz2D : MonoBehaviour
         if (!coll.enabled) return;
         if (coll.usedByComposite) return;
         CirculoVertice[] vertices = new CirculoVertice[1];
-        vertices[0]=(new CirculoVertice() { pos = coll.transform.TransformPoint(coll.offset), radio = coll.transform.TransformVector(Vector3.right).magnitude * coll.radius, padre = coll });
+        vertices[0]=(new CirculoVertice() { actualizador = ActualizadorTransPointConOffset, puntoReferencia = Vector2.zero/*pos = coll.transform.TransformPoint(coll.offset)*/, radio = coll.transform.TransformVector(Vector3.right).magnitude * coll.radius, padre = coll });
         colliders.Add(coll, vertices);
     }
     void GenerarCirculosCapsule(CapsuleCollider2D coll)
@@ -636,16 +652,16 @@ public class Luz2D : MonoBehaviour
         if ((coll.direction == CapsuleDirection2D.Horizontal && tamDeforme.x <= tamDeforme.y)
             || (coll.direction == CapsuleDirection2D.Vertical && tamDeforme.y <= tamDeforme.x))
         {
-            vertices.Add(new CirculoVertice() { pos = coll.transform.TransformPoint(coll.offset), radio = Mathf.Max(tamDeforme.x, tamDeforme.y), padre = coll });
+            vertices.Add(new CirculoVertice() { actualizador=ActualizadorTransPointConOffset, puntoReferencia=Vector2.zero/*pos = coll.transform.TransformPoint(coll.offset)*/, radio = Mathf.Max(tamDeforme.x, tamDeforme.y), padre = coll });
         }
         else
         {
-            float radio = Mathf.Min(tamDeforme.x, tamDeforme.y);
+            /*float radio = Mathf.Min(tamDeforme.x, tamDeforme.y);
             Vector3 offset = Vector3.zero;
             if (coll.direction == CapsuleDirection2D.Horizontal) offset = coll.transform.right * (tamDeforme.x - radio) * .5f;
-            else offset = coll.transform.up * (tamDeforme.y - radio) * .5f;
-            vertices.Add(new CirculoVertice() { pos = coll.transform.TransformPoint(coll.offset) + offset, radio = radio, padre = coll });
-            vertices.Add(new CirculoVertice() { pos = coll.transform.TransformPoint(coll.offset) - offset, radio = radio, padre = coll });
+            else offset = coll.transform.up * (tamDeforme.y - radio) * .5f;*/
+            vertices.Add(new CirculoVertice() { actualizador= ActualizadorCapsule, puntoReferencia = Vector2.one/*pos = coll.transform.TransformPoint(coll.offset) + offset*/, radio = radio, padre = coll });
+            vertices.Add(new CirculoVertice() { actualizador = ActualizadorCapsule, puntoReferencia = -Vector2.one/*pos = coll.transform.TransformPoint(coll.offset) - offset*/, radio = radio, padre = coll });
         }
         colliders.Add(coll, vertices.ToArray());
     }
@@ -657,7 +673,7 @@ public class Luz2D : MonoBehaviour
         int count = 0;
         foreach (var p in coll.points)
         {
-            vertices[count++]=(new CirculoVertice() { pos = coll.transform.TransformPoint(p + coll.offset), radio = coll.edgeRadius, padre = coll });
+            vertices[count++]=(new CirculoVertice() { actualizador=ActualizadorTransPointConOffset, puntoReferencia=p/*pos = coll.transform.TransformPoint(p + coll.offset)*/, radio = coll.edgeRadius, padre = coll });
         }
         colliders.Add(coll, vertices);
     }
@@ -669,7 +685,7 @@ public class Luz2D : MonoBehaviour
         int count = 0;
         foreach (var p in coll.points)
         {
-            vertices[count++]=(new CirculoVertice() { pos = coll.transform.TransformPoint(p + coll.offset), radio = 0f, padre = coll });
+            vertices[count++]=(new CirculoVertice() { actualizador=ActualizadorTransPointConOffset, puntoReferencia=p/*pos = coll.transform.TransformPoint(p + coll.offset)*/, radio = 0f, padre = coll });
         }
         colliders.Add(coll, vertices);
     }
@@ -684,9 +700,28 @@ public class Luz2D : MonoBehaviour
             coll.GetPath(i, path);
             foreach (var p in path)
             {
-                vertices.Add(new CirculoVertice() { pos = coll.transform.TransformDirection(p) + coll.transform.position, radio = radio, padre = coll });
+                vertices.Add(new CirculoVertice() { actualizador=ActualizadorTransDirectionMasCollPos, puntoReferencia=p/*pos = coll.transform.TransformDirection(p) + coll.transform.position*/, radio = radio, padre = coll });
             }
         }
         colliders.Add(coll, vertices.ToArray());
+    }
+
+    static Vector2 ActualizadorCapsule(Vector2 punto, Collider2D collider)
+    {
+        var capsule = collider as CapsuleCollider2D;
+        Vector2 tamDeforme = capsule.transform.TransformVector(capsule.size);
+        float radio = Mathf.Min(tamDeforme.x, tamDeforme.y);
+        Vector2 offset = Vector2.zero;
+        if (capsule.direction == CapsuleDirection2D.Horizontal) offset = capsule.transform.right * (tamDeforme.x - radio) * .5f;
+
+        return (Vector2)collider.transform.TransformPoint(collider.offset)+ offset* punto.x;
+    }
+    static Vector2 ActualizadorTransPointConOffset(Vector2 punto, Collider2D collider)
+    {
+        return collider.transform.TransformPoint(punto + collider.offset);
+    }
+    static Vector2 ActualizadorTransDirectionMasCollPos(Vector2 punto, Collider2D collider)
+    {
+        return collider.transform.TransformDirection(punto) + collider.transform.position;
     }
 }
