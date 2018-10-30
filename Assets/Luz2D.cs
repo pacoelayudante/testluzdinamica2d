@@ -6,8 +6,6 @@ using UnityEditor;
 #endif
 
 [RequireComponent(typeof(CircleCollider2D))]
-//[RequireComponent(typeof(MeshFilter))]
-//[RequireComponent(typeof(MeshRenderer))]
 [ExecuteInEditMode]
 public class Luz2D : MonoBehaviour
 {
@@ -29,8 +27,8 @@ public class Luz2D : MonoBehaviour
     float maximaAperturaHaz = 45f;
     public Material material;
      
-    Collider2D[] collidersTocados = new Collider2D[500];
-    int cantColliders = 0;
+    //Collider2D[] collidersTocados = new Collider2D[500];
+    //int cantColliders = 0;
 
     new CircleCollider2D collider;
     CircleCollider2D Collider
@@ -40,6 +38,12 @@ public class Luz2D : MonoBehaviour
     private void Update()
     {
         ConstruirHacesDeLuz();
+#if UNITY_EDITOR
+        if(!EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode && !BuildPipeline.isBuildingPlayer && !EditorApplication.isCompiling)
+        {
+            ColectarCollidersYCirculosEnEditor();
+        }
+#endif
         GenerarMalla();
         if (mesh)
         {
@@ -95,14 +99,7 @@ public class Luz2D : MonoBehaviour
         {
             return Vector2.zero;
         }
-        /*public Vector2 OffsetRayo(Vector2 desde, float signo)
-        {
-            if (radio == 0f) return Vector2.zero;
-            float d = (pos - desde).magnitude;
-            float h = Mathf.Sqrt(d * d - radio * radio) * radio / d;
-            float d_ = Mathf.Sqrt(radio * radio - h * h);
-            return Vector2.Perpendicular(desde - pos).normalized * h * signo + (desde - pos).normalized * d_;
-        }*/
+
 #if UNITY_EDITOR
         public void OnDrawGizmos()
         {
@@ -129,7 +126,7 @@ public class Luz2D : MonoBehaviour
             Gizmos.DrawRay(transform.position, transform.TransformDirection(Mathf.Cos(aperturaDeAngulo * Mathf.Deg2Rad), Mathf.Sin(aperturaDeAngulo * Mathf.Deg2Rad), 0f) * radio);
         }
         Gizmos.DrawSphere(transform.position, HandleUtility.GetHandleSize(transform.position) * .05f);
-        if (!EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode && Selection.Contains(gameObject))
+        /*if (!EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode && Selection.Contains(gameObject))
         {
             ColectarColliders();
             ColectarCirculos();
@@ -146,7 +143,7 @@ public class Luz2D : MonoBehaviour
             foreach (var haz in hacesDeLuz)
             {
                 haz.Gizmo(mesh==null || !enabled);
-            }
+            }*/
     }
 #endif
 
@@ -305,10 +302,10 @@ public class Luz2D : MonoBehaviour
             }
             puntoHit = hits[0].point;
         }
-        public void Gizmo()
+        /*public void Gizmo()
         {
             Gizmos.DrawLine(puntoDestino, origen);
-        }
+        }*/
         public int CompareTo(VectorDeLuz otro)
         {
             return anguloRelativo.CompareTo(otro.anguloRelativo);
@@ -324,7 +321,7 @@ public class Luz2D : MonoBehaviour
         public bool TieneInterseccion { get { return conInterseccion; } }
         public Vector3 Interseccion { get { return puntoInterseccion; } }
 
-        bool hover;
+        //bool hover;
 
         Vector3 origen;
         VectorDeLuz conReloj, contraReloj;
@@ -371,14 +368,14 @@ public class Luz2D : MonoBehaviour
                             conInterseccion = false;
                         }
                     }//Y sino entonces es el punto medio entre ambos hits y ya
-                    else conInterseccion = false;                    
+                    else conInterseccion = false;
 
-                    if (hover)
+                    /*if (hover)
                     {
                         Handles.color = (Color.magenta + Color.red) * .5f;
                         Handles.DrawDottedLine(contraReloj.PuntoCercano - contraPerp.normalized, contraReloj.PuntoCercano + contraPerp.normalized, HandleUtility.GetHandleSize(contraReloj.PuntoCercano) * 5f);
                         Handles.DrawDottedLine(conReloj.PuntoCercano - conPerp.normalized, conReloj.PuntoCercano + conPerp.normalized, HandleUtility.GetHandleSize(conReloj.PuntoCercano) * 5f);
-                    }
+                    }*/
 
                 }
             }
@@ -445,12 +442,12 @@ public class Luz2D : MonoBehaviour
                             }
                         }
                         else conInterseccion = false;
-                        if (hover)
+                        /*if (hover)
                         {
                             Handles.color = (Color.magenta + Color.red) * .5f;
                             Handles.DrawDottedLine(contraReloj.hits[0].point - contraPerp.normalized, contraReloj.hits[0].point + contraPerp.normalized, HandleUtility.GetHandleSize(contraReloj.hits[0].point) * 5f);
                             Handles.DrawDottedLine(conReloj.hits[0].point - conPerp.normalized, conReloj.hits[0].point + conPerp.normalized, HandleUtility.GetHandleSize(conReloj.hits[0].point) * 5f);
-                        }
+                        }*/
                     }
                 }
             }
@@ -461,9 +458,9 @@ public class Luz2D : MonoBehaviour
             }
         }
 
-        public void Gizmo(bool dibujarDibujo = true)
+        /*public void Gizmo(bool dibujarDibujo = true)
         {
-            /*if(Event.current!=null)hover = GuazuExtender.PuntoEnTriangulo(conReloj.puntoDestino, contraReloj.puntoDestino, origen, HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));*/
+            //if(Event.current!=null)hover = GuazuExtender.PuntoEnTriangulo(conReloj.puntoDestino, contraReloj.puntoDestino, origen, HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));
             if (hover)
             {
                 Gizmos.color = conReloj.rayoInterrumpido ? Color.red : Color.blue;
@@ -503,9 +500,8 @@ public class Luz2D : MonoBehaviour
                 Handles.DrawLine(conReloj.PuntoCercano, contraReloj.PuntoLejano);
                 Handles.DrawLine(contraReloj.PuntoCercano, conReloj.PuntoLejano);
             }
-        }
+        }*/
 
-        
     }
 
     void ConstruirHacesDeLuz()
@@ -619,13 +615,11 @@ public class Luz2D : MonoBehaviour
         mesh.RecalculateBounds();
     }
 
-    void ColectarColliders()
+#if UNITY_EDITOR
+    void ColectarCollidersYCirculosEnEditor()
     {
-        cantColliders = Collider.OverlapCollider(filtro, collidersTocados);
-        if (cantColliders == collidersTocados.Length) Debug.Log("(cantColliders == collidersTocados.Length)");
-    }
-    void ColectarCirculos()
-    {
+        Collider2D[] collidersTocados = new Collider2D[300];
+        int cantColliders = Collider.OverlapCollider(filtro, collidersTocados);
         colliders.Clear();
         for (int i=0; i<cantColliders; i++)
         {
@@ -638,6 +632,8 @@ public class Luz2D : MonoBehaviour
             else if (coll.GetType() == typeof(CompositeCollider2D)) GenerarCirculosComposite((CompositeCollider2D)coll);
         }
     }
+#endif
+
     void GenerarCirculosBox(BoxCollider2D coll)
     {
         if (!coll.enabled) return;
