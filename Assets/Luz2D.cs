@@ -46,6 +46,22 @@ public class Luz2D : MonoBehaviour
             Graphics.DrawMesh(mesh, Matrix4x4.identity, material, gameObject.layer);
         }
     }
+
+    private void OnTriggerEnter2D(Collider2D coll)
+    {
+        if (colliders.ContainsKey(coll)) return;
+        if (coll.GetType() == typeof(BoxCollider2D)) GenerarCirculosBox((BoxCollider2D)coll);
+        else if (coll.GetType() == typeof(CircleCollider2D)) GenerarCirculosCircle((CircleCollider2D)coll);
+        else if (coll.GetType() == typeof(CapsuleCollider2D)) GenerarCirculosCapsule((CapsuleCollider2D)coll);
+        else if (coll.GetType() == typeof(EdgeCollider2D)) GenerarCirculosEdge((EdgeCollider2D)coll);
+        else if (coll.GetType() == typeof(PolygonCollider2D)) GenerarCirculosPolygon((PolygonCollider2D)coll);
+        else if (coll.GetType() == typeof(CompositeCollider2D)) GenerarCirculosComposite((CompositeCollider2D)coll);
+    }
+    private void OnTriggerExit2D(Collider2D collision)
+    {
+        colliders.Remove(collision);
+    }
+
     private void OnValidate()
     {
 #if UNITY_EDITOR
@@ -117,6 +133,7 @@ public class Luz2D : MonoBehaviour
         {
             ColectarColliders();
             ColectarCirculos();
+            ConstruirHacesDeLuz();
         }
         Handles.color = Gizmos.color = Color.magenta*.75f;
         foreach (var circs in colliders.Values)
@@ -290,7 +307,7 @@ public class Luz2D : MonoBehaviour
         }
         public void Gizmo()
         {
-            Gizmos.DrawLine(PuntoLejano, origen);
+            Gizmos.DrawLine(puntoDestino, origen);
         }
         public int CompareTo(VectorDeLuz otro)
         {
@@ -327,6 +344,8 @@ public class Luz2D : MonoBehaviour
             this.contraReloj = contraReloj;
             origen = conReloj.origen;
 
+           //hover = GuazuExtender.PuntoEnConoInfinito(origen, contraReloj.puntoDestino, conReloj.puntoDestino, HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));//GuazuExtender.PuntoEnTriangulo(conReloj.puntoDestino, contraReloj.puntoDestino, origen, HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));
+
             EstablecerForma(filtro);
         }
 
@@ -359,7 +378,6 @@ public class Luz2D : MonoBehaviour
                         Handles.color = (Color.magenta + Color.red) * .5f;
                         Handles.DrawDottedLine(contraReloj.PuntoCercano - contraPerp.normalized, contraReloj.PuntoCercano + contraPerp.normalized, HandleUtility.GetHandleSize(contraReloj.PuntoCercano) * 5f);
                         Handles.DrawDottedLine(conReloj.PuntoCercano - conPerp.normalized, conReloj.PuntoCercano + conPerp.normalized, HandleUtility.GetHandleSize(conReloj.PuntoCercano) * 5f);
-                        Handles.DrawWireDisc(puntoInterseccion, Vector3.forward, HandleUtility.GetHandleSize(puntoInterseccion) * .1f);
                     }
 
                 }
@@ -432,7 +450,6 @@ public class Luz2D : MonoBehaviour
                             Handles.color = (Color.magenta + Color.red) * .5f;
                             Handles.DrawDottedLine(contraReloj.hits[0].point - contraPerp.normalized, contraReloj.hits[0].point + contraPerp.normalized, HandleUtility.GetHandleSize(contraReloj.hits[0].point) * 5f);
                             Handles.DrawDottedLine(conReloj.hits[0].point - conPerp.normalized, conReloj.hits[0].point + conPerp.normalized, HandleUtility.GetHandleSize(conReloj.hits[0].point) * 5f);
-                            Handles.DrawWireDisc(puntoInterseccion, Vector3.forward, HandleUtility.GetHandleSize(puntoInterseccion) * .1f);
                         }
                     }
                 }
@@ -446,7 +463,7 @@ public class Luz2D : MonoBehaviour
 
         public void Gizmo(bool dibujarDibujo = true)
         {
-            hover = GuazuExtender.PuntoEnTriangulo(conReloj.puntoDestino, contraReloj.puntoDestino, origen, HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));
+            /*if(Event.current!=null)hover = GuazuExtender.PuntoEnTriangulo(conReloj.puntoDestino, contraReloj.puntoDestino, origen, HandleUtility.GUIPointToWorldRay(Event.current.mousePosition).GetPoint(1f));*/
             if (hover)
             {
                 Gizmos.color = conReloj.rayoInterrumpido ? Color.red : Color.blue;
@@ -455,6 +472,9 @@ public class Luz2D : MonoBehaviour
                 Gizmos.color = contraReloj.rayoInterrumpido ? Color.red : Color.blue;
                 if (contraReloj.toqueVerticeClave) Gizmos.color += Color.green;
                 contraReloj.Gizmo();
+
+                Handles.color = (Color.magenta + Color.red) * .5f*(conInterseccion?1f:.5f);
+                Handles.DrawWireDisc(puntoInterseccion, Vector3.forward, HandleUtility.GetHandleSize(puntoInterseccion) * .1f);
             }
             Handles.color = Gizmos.color = Color.Lerp(Color.clear, Color.white, .4f);
 

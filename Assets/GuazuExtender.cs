@@ -53,6 +53,6 @@ public static class GuazuExtender {
     }
     public static bool PuntoEnConoInfinito(Vector2 centroCono, Vector2 conoContraReloj, Vector2 conoConReloj, Vector2 punto)
     {
-        return QueLadoDeLaLinea(centroCono, conoContraReloj, punto) < 0f && QueLadoDeLaLinea(centroCono, conoConReloj, punto) > 0f;
+        return QueLadoDeLaLinea(centroCono, conoConReloj, punto) < 0f && QueLadoDeLaLinea(centroCono, conoContraReloj, punto) > 0f;
     }
 }
