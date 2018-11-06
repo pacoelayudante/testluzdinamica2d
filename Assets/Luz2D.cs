@@ -597,15 +597,15 @@ public class Luz2D : MonoBehaviour
             {
                 vertices.Add(haz.Interseccion);
                 colores.Add(color);
-                tris.Add(vertices.Count - 1);
-                tris.Add(0);
                 tris.Add(vertices.Count - 2);
+                tris.Add(0);
+                tris.Add(vertices.Count - 1);
             }
             vertices.Add(haz.ConReloj);
             colores.Add(color);
-            tris.Add(vertices.Count - 1);
-            tris.Add(0);
             tris.Add(vertices.Count - 2);
+            tris.Add(0);
+            tris.Add(vertices.Count - 1);
         }
 
         mesh.Clear();
